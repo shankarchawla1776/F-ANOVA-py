@@ -84,3 +84,12 @@ def run_processpool(verbose=True):
         print("bootstrap statistics:", results)
         print("mean=", results.mean(),
               "max=", results.max())
+
+
+def aflag_maker(n_i):
+    aflag = []
+    for k in range(len(n_i)):
+        # indicator = np.repeat(k, n_i[k]) #MATLAB indexing uses 1 start
+        indicator = np.repeat(k + 1, n_i[k]) #MATLAB indexing uses 1 start
+        aflag.extend(indicator)
+    return np.array(aflag)

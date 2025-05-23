@@ -358,3 +358,12 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
     pvalue = pstat[1]
 
     return pvalue, stat
+
+
+# def aflag_maker(n_i):
+#     aflag = []
+#     for k in range(len(n_i)):
+#         # indicator = np.repeat(k, n_i[k]) #MATLAB indexing uses 1 start
+#         indicator = np.repeat(k + 1, n_i[k]) #MATLAB indexing uses 1 start
+#         aflag.extend(indicator)
+#     return np.array(aflag)
