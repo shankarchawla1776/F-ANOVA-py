@@ -1,4 +1,4 @@
-*.txt
+# *.txt
 *.lock
 *.toml
 functionalANOVA/utils.py
