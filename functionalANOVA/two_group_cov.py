@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.stats import chi2, gaussian_kde
-from scipy.linalg import eig
+import numpy as np
 
 def two_group_cov(self, method, y1, y2):
     n1, L = y1.shape
@@ -32,12 +32,12 @@ def two_group_cov(self, method, y1, y2):
         LHS /= N
 
         if LHS.shape == Sigma.shape:
-            omega_hat = LHS - np.dot(Sigma, Sigma)
+            omega_hat = LHS - (Sigma @ Sigma)
         else:
             SigmaLarge = ((n1 - 1) * np.cov(y1, rowvar=False) + (n2 - 1) * np.cov(y2, rowvar=False)) / (N - 2)
-            omega_hat = LHS - np.dot(SigmaLarge, SigmaLarge)
+            omega_hat = LHS - (SigmaLarge @ SigmaLarge)
 
-        eig_gamma_hat = np.real(eig(omega_hat, right=False))
+        eig_gamma_hat = np.real(np.linalg.eigvals(omega_hat))
         eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
         T_null = self.__class__.chi_sq_mixture(q, eig_gamma_hat, self.N_simul)
@@ -49,8 +49,8 @@ def two_group_cov(self, method, y1, y2):
         pvalue = 1 - kde.integrate_box_1d(-np.inf, stat)
 
     elif method == "L2-BiasReduced":
-        A = np.trace(np.linalg.matrix_power(Sigma, 2)) + np.trace(Sigma)**2
-        B = 2 * np.trace(np.linalg.matrix_power(Sigma, 4)) + 2 * np.trace(np.linalg.matrix_power(Sigma, 2))**2
+        A = np.trace(Sigma @ Sigma) + np.trace(Sigma)**2
+        B = 2 * np.trace(np.linalg.matrix_power(Sigma, 4)) + 2 * np.trace(Sigma @ Sigma)**2
 
         alpha = (N - 2)**2 / (N * (N - 3)) * (B - A**2 / (N - 2)) / A
         df = (1 + 1 / (N - 2)) * (A**2 - 2 * B / (N - 1)) / (B - A**2 / (N - 2))
@@ -60,7 +60,7 @@ def two_group_cov(self, method, y1, y2):
     elif method == "L2-Naive":
         an = np.trace(Sigma)
 
-        bn = np.trace(np.linalg.matrix_power(Sigma, 2))
+        bn = np.trace(Sigma @ Sigma)
         cn = np.trace(np.linalg.matrix_power(Sigma, 3))
         dn = np.trace(np.linalg.matrix_power(Sigma, 4))
 

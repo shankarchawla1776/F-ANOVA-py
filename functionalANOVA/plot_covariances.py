@@ -20,7 +20,7 @@ def plot_covariances(self, plot_type='default', subgroup_indicator=None, group_l
             eta_i[:, kk] = np.mean(data[kk], axis=1)
             zero_mean_data_k_subset = data[kk] - eta_i[:, kk:kk+1]
             v_hat_i[kk] = zero_mean_data_k_subset
-            gamma_hat_i[:, :, kk] = (1 / (n_i - 1)) * np.dot(zero_mean_data_k_subset, zero_mean_data_k_subset.T)
+            gamma_hat_i[:, :, kk] = (1 / (n_i - 1)) * (zero_mean_data_k_subset @ zero_mean_data_k_subset.T)
 
         N = int(np.sum(n_ii))
         pooled_covar_terms = np.zeros((domain_points, domain_points, k))

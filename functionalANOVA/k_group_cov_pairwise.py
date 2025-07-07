@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.stats import chi2, gaussian_kde
-from scipy.linalg import eig
+import numpy as np
 from Timer import setUpTimeBar
 
 
@@ -35,9 +35,9 @@ def k_group_cov_pairwise(self, method, y1, y2):
     m = self.n_domain_points
 
     if N > m:
-        Sigma = np.dot(V.T, V) / (N - 2)  # mxm
+        Sigma = (V.T @ V) / (N - 2)  # mxm
     else:
-        Sigma = np.dot(V, V.T) / (N - 2)  # NxN
+        Sigma = (V @ V.T) / (N - 2)  # NxN
 
     if method == "L2-Simul":
         q = 1
@@ -64,12 +64,12 @@ def k_group_cov_pairwise(self, method, y1, y2):
         LHS = LHS / N
 
         if LHS.shape == Sigma.shape:
-            omega_hat = LHS - np.dot(Sigma, Sigma)  # matrix multiplication
+            omega_hat = LHS - (Sigma @ Sigma)  # matrix multiplication
         else:
             SigmaLarge = ((n1 - 1) * np.cov(y1, rowvar=False) + (n2 - 1) * np.cov(y2, rowvar=False)) / (N - 2)
-            omega_hat = LHS - np.dot(SigmaLarge, SigmaLarge)  # matrix multiplication
+            omega_hat = LHS - (SigmaLarge @ SigmaLarge)  # matrix multiplication
 
-        eig_gamma_hat = np.real(eig(omega_hat, right=False))
+        eig_gamma_hat = np.real(np.linalg.eigvals(omega_hat))
         eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
         T_null = self.__class__.chi_sq_mixture(q, eig_gamma_hat, self.N_simul)
@@ -77,8 +77,8 @@ def k_group_cov_pairwise(self, method, y1, y2):
         pvalue = 1 - kde.integrate_box_1d(-np.inf, stat)
 
     elif method == "L2-BiasReduced":  # Bias Reduced
-        A = np.trace(np.linalg.matrix_power(Sigma, 2)) + np.trace(Sigma)**2
-        B = 2 * np.trace(np.linalg.matrix_power(Sigma, 4)) + 2 * np.trace(np.linalg.matrix_power(Sigma, 2))**2
+        A = np.trace(Sigma @ Sigma) + np.trace(Sigma)**2
+        B = 2 * np.trace(np.linalg.matrix_power(Sigma, 4)) + 2 * np.trace(Sigma @ Sigma)**2
 
         alpha = (N - 2)**2 / (N * (N - 3)) * (B - A**2 / (N - 2)) / A
         df = (1 + 1 / (N - 2)) * (A**2 - 2 * B / (N - 1)) / (B - A**2 / (N - 2))
@@ -87,7 +87,7 @@ def k_group_cov_pairwise(self, method, y1, y2):
 
     elif method == "L2-Naive":  # Naive Method
         an = np.trace(Sigma)
-        bn = np.trace(np.linalg.matrix_power(Sigma, 2))
+        bn = np.trace(Sigma @ Sigma)
         cn = np.trace(np.linalg.matrix_power(Sigma, 3))
         dn = np.trace(np.linalg.matrix_power(Sigma, 4))
 
@@ -124,9 +124,9 @@ def k_group_cov_pairwise(self, method, y1, y2):
             R = np.vstack([R1, R2])
 
             if N > m:
-                pS = np.dot(R.T, R) / (N - k)  # p x p pooled covariance matrix
+                pS = (R.T @ R) / (N - k)  # p x p pooled covariance matrix
             else:
-                pS = np.dot(R, R.T) / (N - k)
+                pS = (R @ R.T) / (N - k)
 
             stat0 = 0
             nni = 0
@@ -137,12 +137,12 @@ def k_group_cov_pairwise(self, method, y1, y2):
 
                 # ith group's covariance
                 if N > m:
-                    pSi = np.dot(Ri.T, Ri) / (ni - 1)  # Vi: ni x p
+                    pSi = (Ri.T @ Ri) / (ni - 1)  # Vi: ni x p
                     temp = np.trace(np.linalg.matrix_power(pSi - pS, 2))
                 else:
-                    pSi = np.dot(Ri, Ri.T) / (ni - 1)
+                    pSi = (Ri @ Ri.T) / (ni - 1)
                     temp = (np.trace(np.linalg.matrix_power(pSi, 2)) -
-                           2 * np.trace(np.dot(np.dot(np.dot(Ri, R.T), R), Ri.T)) / (N - k) / (ni - 1) +
+                           2 * np.trace(((Ri @ R.T) @ R) @ Ri.T) / (N - k) / (ni - 1) +
                            np.trace(np.linalg.matrix_power(pS, 2)))
 
                 stat0 += (ni - 1) * temp
@@ -179,9 +179,9 @@ def k_group_cov_pairwise(self, method, y1, y2):
             R = np.vstack([R1, R2])
 
             if N > m:
-                pS = np.dot(R.T, R) / (N - k)
+                pS = (R.T @ R) / (N - k)
             else:
-                pS = np.dot(R, R.T) / (N - k)
+                pS = (R @ R.T) / (N - k)
 
             stat0 = 0
             nni = 0
@@ -191,12 +191,12 @@ def k_group_cov_pairwise(self, method, y1, y2):
                 Ri = R[flag, :]
 
                 if N > m:
-                    pSi = np.dot(Ri.T, Ri) / (ni - 1)
+                    pSi = (Ri.T @ Ri) / (ni - 1)
                     temp = np.trace(np.linalg.matrix_power(pSi - pS, 2))
                 else:
-                    pSi = np.dot(Ri, Ri.T) / (ni - 1)
+                    pSi = (Ri @ Ri.T) / (ni - 1)
                     temp = (np.trace(np.linalg.matrix_power(pSi, 2)) -
-                           2 * np.trace(np.dot(np.dot(np.dot(Ri, R.T), R), Ri.T)) / (N - k) / (ni - 1) +
+                           2 * np.trace(((Ri @ R.T) @ R) @ Ri.T) / (N - k) / (ni - 1) +
                            np.trace(np.linalg.matrix_power(pS, 2)))
 
                 stat0 += (ni - 1) * temp

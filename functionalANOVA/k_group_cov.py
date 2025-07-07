@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.stats import chi2, gaussian_kde
-from scipy.linalg import eig
+import numpy as np
 
 def k_group_cov(self, method, stat, Sigma, V):
     gsize = self.n_i
@@ -44,7 +44,7 @@ def k_group_cov(self, method, stat, Sigma, V):
             SigmaLarge = np.dot(V_large.T, V_large) / (self.N - self.k_groups)
             omega_hat = LHS - np.dot(SigmaLarge, SigmaLarge)
 
-        eig_gamma_hat = np.real(eig(omega_hat, right=False))
+        eig_gamma_hat = np.real(np.linalg.eigvals(omega_hat))
         eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
         T_null = self.__class__.chi_sq_mixture(q, eig_gamma_hat, self.N_simul)
@@ -72,9 +72,9 @@ def k_group_cov(self, method, stat, Sigma, V):
         pvalue = 1 - chi2.cdf(stat / alpha, df)
 
     elif method == "L2-BiasReduced":
-        A0 = np.trace(np.linalg.matrix_power(Sigma, 2)) + np.trace(Sigma)**2
+        A0 = np.trace(Sigma @ Sigma) + np.trace(Sigma)**2
 
-        B0 = 2 * np.trace(np.linalg.matrix_power(Sigma, 4)) + 2 * (np.trace(np.linalg.matrix_power(Sigma, 2)))**2
+        B0 = 2 * np.trace(np.linalg.matrix_power(Sigma, 4)) + 2 * (np.trace(Sigma @ Sigma))**2
 
 
         alpha = ((N - k)**2 / (N * (N - k - 1)) * (B0 - A0**2 / (N - k))) / A0
@@ -105,9 +105,9 @@ def k_group_cov(self, method, stat, Sigma, V):
             R = np.vstack(R)
 
             if N > p:
-                pS = np.dot(R.T, R) / (N - k)
+                pS = (R.T @ R) / (N - k)
             else:
-                pS = np.dot(R, R.T) / (N - k)
+                pS = (R @ R.T) / (N - k)
 
             stat0 = 0
             nni = 0
@@ -117,11 +117,11 @@ def k_group_cov(self, method, stat, Sigma, V):
                 Ri = R[flag, :]
 
                 if N > p:
-                    pSi = np.dot(Ri.T, Ri) / (ni - 1)
+                    pSi = (Ri.T @ Ri) / (ni - 1)
                     temp = np.trace(np.linalg.matrix_power(pSi - pS, 2))
                 else:
-                    pSi = np.dot(Ri, Ri.T) / (ni - 1)
-                    temp = np.trace(np.linalg.matrix_power(pSi, 2)) - 2 * np.trace(np.dot(np.dot(np.dot(Ri, R.T), R), Ri.T)) / (N - k) / (ni - 1) + np.trace(np.linalg.matrix_power(pS, 2))
+                    pSi = (Ri @ Ri.T) / (ni - 1)
+                    temp = np.trace(np.linalg.matrix_power(pSi, 2)) - 2 * np.trace(((Ri @ R.T) @ R) @ Ri.T) / (N - k) / (ni - 1) + np.trace(np.linalg.matrix_power(pS, 2))
 
                 stat0 += (ni - 1) * temp
                 nni += ni
@@ -149,9 +149,9 @@ def k_group_cov(self, method, stat, Sigma, V):
             R = np.vstack(R)
 
             if N > p:
-                pS = np.dot(R.T, R) / (N - k)
+                pS = (R.T @ R) / (N - k)
             else:
-                pS = np.dot(R, R.T) / (N - k)
+                pS = (R @ R.T) / (N - k)
 
             stat0 = 0
             nni = 0
