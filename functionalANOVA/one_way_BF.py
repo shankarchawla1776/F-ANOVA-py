@@ -1,8 +1,9 @@
 import numpy as np
-from scipy import stats from scipy.stats import chi2, f
+from scipy import stats
+from scipy.stats import chi2, f
 from scipy.linalg import inv, sqrtm
 import pandas as pd
-from utils import *
+
 
 
 
@@ -14,7 +15,7 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
 
     if indicator_a is None:
         gsize = self.n_i
-        aflag = aflag_maker(gsize)
+        aflag = self.__class__.aflag_maker(gsize)
 
     else:
         aflag = indicator_a
@@ -45,7 +46,7 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
         if vmu.size:
             vmu = np.vstack([vmu, mui])
         else:
-            mui.reshape(1,-1)
+            vmu = mui.reshape(1,-1)
 
         ri = yi - np.ones((ni,1)) @ mui.reshape(1,-1)
 
@@ -77,7 +78,7 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
 
     D = np.diag(1/gsize)
     H = sqrtm(inv(contrast @ D @ contrast.T))
-    stat0 = np.trace(H @ (contrast @ vmu - c) @ (contrast @ cmu-c).T @ H.T)
+    stat0 = np.trace(H @ (contrast @ vmu - c) @ (contrast @ vmu-c).T @ H.T)
 
 
     if method in ["L2-Naive", "L2-BiasReduced", "F-Naive", "F-BiasReduced"]:
@@ -87,7 +88,7 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
         dd = np.diag(W)
         K1 = np.sum(dd *A)
 
-        K2a = np.sum(DD**2, * A2)
+        K2a = np.sum(dd**2 * A2)
         K2b = np.sum(dd**2 * B2)
 
         AB1 = []
@@ -95,7 +96,7 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
 
 
         for i in range(k-1):
-            ni = int(gsizep[i])
+            ni = int(gsize[i])
             iflag = (aflag == aflag0[i])
 
             yi = yy[iflag , :]
@@ -139,8 +140,10 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
             mask = np.ones(k, dtype=bool)
 
         elif self.Hypothesis == "PAIRWISE":
+            # # np.logical_not makes a boolean mask where true means 0 in contrast. replace with np.any
+            # mask = np.logical_not(np.abs(contrast.T))
 
-            mask = np.logical_not(np.abs(contrast.T))
+            mask = np.any(contrast != 0, axis=0)
             g_n = gsize[mask]
 
             N_n = np.sum(g_n)
@@ -285,7 +288,7 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
             eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
             q = k_n - 1
-            T_null = chi_sq_mixture(q, eig_gamma_hat, self.N_simul)
+            T_null = self.__class__.chi_sq_mixture(q, eig_gamma_hat, self.N_simul)
 
             T_NullFitted = stats.gaussian_kde(T_null)
             pvalue = 1 - T_NullFitted.integrate_box_1d(-np.inf, stat0)
@@ -332,7 +335,7 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
             eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
             q = k_n - 1
-            T_null = chi_sq_mixture(q, eig_gamma_hat, self.N_simul)
+            T_null = self.__class__.chi_sq_mixture(q, eig_gamma_hat, self.N_simul)
 
             S_null = np.zeros(self.N_simul)
             S_ii_subset = [S_ii[i] for i in range(k) if mask[i]]
@@ -341,7 +344,7 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
                 eig_gamma_hat = np.linalg.eigvals(S_ii_subset[i])
                 eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
-                S_temp = chi_sq_mixture(int(g_n[i]) - 1, eig_gamma_hat, self.N_simul)
+                S_temp = self.__class__.chi_sq_mixture(int(g_n[i]) - 1, eig_gamma_hat, self.N_simul)
                 S_temp = (S_temp * A_n_ii[i]) / (g_n[i] - 1)
                 S_null += S_temp
 

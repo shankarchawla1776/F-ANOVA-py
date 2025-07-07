@@ -1,3 +1,15 @@
+*.txt
+*.lock
+*.toml
+functionalANOVA/utils.py
+
+# functionalANOVA/PlotMeans.py
+# functionalANOVA/PlotCovariances.py
+
+
+
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

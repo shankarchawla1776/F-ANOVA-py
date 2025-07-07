@@ -10,6 +10,7 @@ dependencies = [
     "pandas>=2.2.3",
     "pytest>=8.3.5",
     "scipy>=1.15.3",
+    "tqdm>=4.67.1",
 ]
 
 [dependency-groups]
