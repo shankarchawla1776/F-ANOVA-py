@@ -75,6 +75,7 @@ def k_group_cov_pairwise(self, method, y1, y2):
         T_null = self.__class__.chi_sq_mixture(q, eig_gamma_hat, self.N_simul)
         kde = gaussian_kde(T_null)
         pvalue = 1 - kde.integrate_box_1d(-np.inf, stat)
+        pvalue = max(0,min(1,pvalue))
 
     elif method == "L2-BiasReduced":  # Bias Reduced
         A = np.trace(Sigma @ Sigma) + np.trace(Sigma)**2

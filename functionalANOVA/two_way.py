@@ -133,6 +133,7 @@ def two_way(self, method, data, contrast):
         SSH_null = self.__class__.chi_sq_mixture(r, eig_gamma_hat, self.N_simul)
         SSH_NullFitted = stats.gaussian_kde(SSH_null)
         pvalue = 1 - SSH_NullFitted.integrate_box_1d(-np.inf, stat)
+        pvalue = max(0,min(1,pvalue))
         pstat = [stat, pvalue]
 
     elif method in ["L2-Naive", "L2-BiasReduced"]:
@@ -161,6 +162,7 @@ def two_way(self, method, data, contrast):
         F_null = SSH_null / SSE_null * ratio
         F_NullFitted = stats.gaussian_kde(F_null)
         pvalue = 1 - F_NullFitted.integrate_box_1d(-np.inf, stat)
+        pvalue = max(0,min(1,pvalue))
         pstat = [stat, pvalue]
 
     elif method == "L2-Bootstrap":

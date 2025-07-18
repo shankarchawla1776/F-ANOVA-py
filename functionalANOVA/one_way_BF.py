@@ -292,6 +292,8 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
 
             T_NullFitted = stats.gaussian_kde(T_null)
             pvalue = 1 - T_NullFitted.integrate_box_1d(-np.inf, stat0)
+            pvalue = max(0,min(1,pvalue))
+
 
             pstat = [stat0, pvalue]
         else:
@@ -352,6 +354,7 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
             F_NullFitted = stats.gaussian_kde(F_null)
 
             pvalue = 1 - F_NullFitted.integrate_box_1d(-np.inf, f_stat)
+            pvalue = max(0,min(1,pvalue))
 
             pstat = [f_stat, pvalue]
         else:

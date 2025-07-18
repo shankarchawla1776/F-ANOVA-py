@@ -56,6 +56,7 @@ def one_way(self, n_tests, q, eig_gamma_hat, eta_i, eta_grand, params, pair_vec)
 
             for j in range(n_tests):
                 p_value[j] = 1 - T_NullFitted.integrate_box_1d(-np.inf, T_n[j])
+                p_value[j] = max(0,min(1,p_value[j]))
 
                 if self.show_simul_plot:
                     plot_test_stats(p_value[j], self.alpha, T_null, T_n[j], method + " test", self.hypothesis, pair_vec[j])
@@ -157,6 +158,7 @@ def one_way(self, n_tests, q, eig_gamma_hat, eta_i, eta_grand, params, pair_vec)
 
             for j in range(n_tests):
                 p_value[j] = 1 - F_NullFitted.integrate_box_1d(-np.inf, F_n[j])
+                p_value[j] = max(0,min(1,p_value[j]))
                 if self.show_simul_plot:
                     plot_test_stats(p_value[j], self.alpha, F_null, F_n[j], method + " test", self.hypothesis, pair_vec[j])
 

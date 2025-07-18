@@ -42,11 +42,9 @@ def two_group_cov(self, method, y1, y2):
 
         T_null = self.__class__.chi_sq_mixture(q, eig_gamma_hat, self.N_simul)
 
-        # kde = KernelDensity(kernel='gaussian').fit(T_null.reshape(-1, 1))
-        # pvalue = 1 - np.exp(kde.score_samples(np.array([stat]).reshape(-1, 1)))[0]
-
         kde = gaussian_kde(T_null)
         pvalue = 1 - kde.integrate_box_1d(-np.inf, stat)
+        pvalue = max(0,min(1,pvalue))
 
     elif method == "L2-BiasReduced":
         A = np.trace(Sigma @ Sigma) + np.trace(Sigma)**2

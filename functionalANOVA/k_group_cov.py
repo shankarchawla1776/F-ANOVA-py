@@ -50,6 +50,7 @@ def k_group_cov(self, method, stat, Sigma, V):
         T_null = self.__class__.chi_sq_mixture(q, eig_gamma_hat, self.N_simul)
         kde = gaussian_kde(T_null)
         pvalue = 1 - kde.integrate_box_1d(-np.inf, stat)
+        pvalue = max(0,min(1,pvalue))
 
     elif method == "L2-Naive":
         an = np.trace(Sigma)
