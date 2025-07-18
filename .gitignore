@@ -1,6 +1,6 @@
 # *.txt
 *.lock
-*.toml
+# *.toml
 functionalANOVA/utils.py
 
 # functionalANOVA/PlotMeans.py
