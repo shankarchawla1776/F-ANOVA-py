@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.stats import chi2, gaussian_kde
-import numpy as np
-from Timer import setUpTimeBar
+from .timer import set_up_time_bar
+from .utils import chi_sq_mixture
 
 
 def k_group_cov_pairwise(self, method, y1, y2):
@@ -14,7 +14,7 @@ def k_group_cov_pairwise(self, method, y1, y2):
     Sigma2 = np.cov(y2, rowvar=False)
     N = n1 + n2
     # Sigma = ((n1-1)*Sigma1 + (n2-1)*Sigma2) / (N-2)
-    stat = (n1 - 1) * (n2 - 1) / (N - 2) * np.trace(np.dot((Sigma1 - Sigma2), (Sigma1 - Sigma2)))  # Corrected
+    stat = (n1 - 1) * (n2 - 1) / (N - 2) * np.trace((Sigma1 - Sigma2) @ (Sigma1 - Sigma2))  # Corrected
 
     # TESTING
     vmu = []
@@ -49,7 +49,7 @@ def k_group_cov_pairwise(self, method, y1, y2):
         v_array = [v_1j, v_2j]
         LHS = 0
 
-        ts = setUpTimeBar('Calculating Simulated Null Distribution', sum(n_array))
+        ts = set_up_time_bar('Calculating Simulated Null Distribution', sum(n_array))
 
         for ii in range(2):
             n_i = n_array[ii]
@@ -72,7 +72,7 @@ def k_group_cov_pairwise(self, method, y1, y2):
         eig_gamma_hat = np.real(np.linalg.eigvals(omega_hat))
         eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
-        T_null = self.__class__.chi_sq_mixture(q, eig_gamma_hat, self.N_simul)
+        T_null = chi_sq_mixture(q, eig_gamma_hat, self.n_simul)
         kde = gaussian_kde(T_null)
         pvalue = 1 - kde.integrate_box_1d(-np.inf, stat)
         pvalue = max(0,min(1,pvalue))
@@ -104,8 +104,8 @@ def k_group_cov_pairwise(self, method, y1, y2):
         pvalue = 1 - chi2.cdf(stat / alpha, df)
 
     elif method == "Bootstrap-Test":  # Bootstrap test
-        ts = setUpTimeBar('Running Bootstrap Test', self.N_boot)
-        vstat = np.zeros(self.N_boot)
+        ts = set_up_time_bar('Running Bootstrap Test', self.n_boot)
+        vstat = np.zeros(self.n_boot)
         k = 2
 
         def bootstrap_iteration(ii):
@@ -115,7 +115,7 @@ def k_group_cov_pairwise(self, method, y1, y2):
             yy1 = y1[flag1, :]
             yy2 = y2[flag2, :]
 
-            # Computing pS : Bootstrap Pooled Covariance
+            # Computing p_s : Bootstrap Pooled Covariance
             mu1 = np.mean(yy1, axis=0)
             R1 = yy1 - np.ones((n1, 1)) @ mu1.reshape(1, -1)
 
@@ -125,9 +125,9 @@ def k_group_cov_pairwise(self, method, y1, y2):
             R = np.vstack([R1, R2])
 
             if N > m:
-                pS = (R.T @ R) / (N - k)  # p x p pooled covariance matrix
+                p_s = (R.T @ R) / (N - k)  # p x p pooled covariance matrix
             else:
-                pS = (R @ R.T) / (N - k)
+                p_s = (R @ R.T) / (N - k)
 
             stat0 = 0
             nni = 0
@@ -138,13 +138,13 @@ def k_group_cov_pairwise(self, method, y1, y2):
 
                 # ith group's covariance
                 if N > m:
-                    pSi = (Ri.T @ Ri) / (ni - 1)  # Vi: ni x p
-                    temp = np.trace(np.linalg.matrix_power(pSi - pS, 2))
+                    p_si = (Ri.T @ Ri) / (ni - 1)  # Vi: ni x p
+                    temp = np.trace(np.linalg.matrix_power(p_si - p_s, 2))
                 else:
-                    pSi = (Ri @ Ri.T) / (ni - 1)
-                    temp = (np.trace(np.linalg.matrix_power(pSi, 2)) -
+                    p_si = (Ri @ Ri.T) / (ni - 1)
+                    temp = (np.trace(np.linalg.matrix_power(p_si, 2)) -
                            2 * np.trace(((Ri @ R.T) @ R) @ Ri.T) / (N - k) / (ni - 1) +
-                           np.trace(np.linalg.matrix_power(pS, 2)))
+                           np.trace(np.linalg.matrix_power(p_s, 2)))
 
                 stat0 += (ni - 1) * temp
                 nni += ni
@@ -152,7 +152,7 @@ def k_group_cov_pairwise(self, method, y1, y2):
             return stat0
 
         # Bootstrap iterations
-        for ii in range(self.N_boot):
+        for ii in range(self.n_boot):
             vstat[ii] = bootstrap_iteration(ii)
             ts.progress()
 
@@ -160,7 +160,7 @@ def k_group_cov_pairwise(self, method, y1, y2):
         pvalue = np.mean(vstat > stat)
 
     elif method == "Permutation-Test":  # Permutation test
-        ts = setUpTimeBar('Running Permutation Test', self.N_permutations)
+        ts = set_up_time_bar('Running Permutation Test', self.N_permutations)
         vstat = np.zeros(self.N_permutations)
         k = 2
         Y = np.vstack([y1, y2])
@@ -180,9 +180,9 @@ def k_group_cov_pairwise(self, method, y1, y2):
             R = np.vstack([R1, R2])
 
             if N > m:
-                pS = (R.T @ R) / (N - k)
+                p_s = (R.T @ R) / (N - k)
             else:
-                pS = (R @ R.T) / (N - k)
+                p_s = (R @ R.T) / (N - k)
 
             stat0 = 0
             nni = 0
@@ -192,13 +192,13 @@ def k_group_cov_pairwise(self, method, y1, y2):
                 Ri = R[flag, :]
 
                 if N > m:
-                    pSi = (Ri.T @ Ri) / (ni - 1)
-                    temp = np.trace(np.linalg.matrix_power(pSi - pS, 2))
+                    p_si = (Ri.T @ Ri) / (ni - 1)
+                    temp = np.trace(np.linalg.matrix_power(p_si - p_s, 2))
                 else:
-                    pSi = (Ri @ Ri.T) / (ni - 1)
-                    temp = (np.trace(np.linalg.matrix_power(pSi, 2)) -
+                    p_si = (Ri @ Ri.T) / (ni - 1)
+                    temp = (np.trace(np.linalg.matrix_power(p_si, 2)) -
                            2 * np.trace(((Ri @ R.T) @ R) @ Ri.T) / (N - k) / (ni - 1) +
-                           np.trace(np.linalg.matrix_power(pS, 2)))
+                           np.trace(np.linalg.matrix_power(p_s, 2)))
 
                 stat0 += (ni - 1) * temp
                 nni += ni

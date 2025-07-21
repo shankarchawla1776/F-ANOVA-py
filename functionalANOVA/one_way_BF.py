@@ -3,11 +3,10 @@ from scipy import stats
 from scipy.stats import chi2, f
 from scipy.linalg import inv, sqrtm
 import pandas as pd
+from .timer import set_up_time_bar
+from .utils import aflag_maker, chi_sq_mixture
 
-
-
-
-def one_way_bf(self, method, data, contrast, c, indicator_a=None):
+def one_way_BF(self, method, data, contrast, c, indicator_a=None):
 
     N = self.N
     p = self.n_domain_points
@@ -15,7 +14,7 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
 
     if indicator_a is None:
         gsize = self.n_i
-        aflag = self.__class__.aflag_maker(gsize)
+        aflag = aflag_maker(gsize)
 
     else:
         aflag = indicator_a
@@ -182,11 +181,11 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
         params = [df1, df2, K2a, 2*K2b, 2*K2c]
 
     elif method == "L2-Bootstrap":
-        Bstat = np.zeros(self.N_boot)
+        Bstat = np.zeros(self.n_boot)
 
-        ts = self.setUpTimeBar(method)
+        ts = set_up_time_bar(method, self.n_boot)
 
-        for ii in range(self.N_boot):
+        for ii in range(self.n_boot):
 
             Bmu = np.empty((0, p))
             for i in range(k):
@@ -212,10 +211,10 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
         pstat = [stat0, pvalue]
 
     elif method == "F-Bootstrap":
-        Bstat = np.zeros(self.N_boot)
-        ts = self.setUpTimeBar(method)
+        Bstat = np.zeros(self.n_boot)
+        ts = set_up_time_bar(method, self.n_boot)
 
-        for ii in range(self.N_boot):
+        for ii in range(self.n_boot):
             Bmu = np.empty((0, p))
             tr_gamma = []
 
@@ -288,7 +287,7 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
             eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
             q = k_n - 1
-            T_null = self.__class__.chi_sq_mixture(q, eig_gamma_hat, self.N_simul)
+            T_null = chi_sq_mixture(q, eig_gamma_hat, self.n_simul)
 
             T_NullFitted = stats.gaussian_kde(T_null)
             pvalue = 1 - T_NullFitted.integrate_box_1d(-np.inf, stat0)
@@ -337,16 +336,16 @@ def one_way_bf(self, method, data, contrast, c, indicator_a=None):
             eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
             q = k_n - 1
-            T_null = self.__class__.chi_sq_mixture(q, eig_gamma_hat, self.N_simul)
+            T_null = chi_sq_mixture(q, eig_gamma_hat, self.n_simul)
 
-            S_null = np.zeros(self.N_simul)
+            S_null = np.zeros(self.n_simul)
             S_ii_subset = [S_ii[i] for i in range(k) if mask[i]]
 
             for i in range(k_n):
                 eig_gamma_hat = np.linalg.eigvals(S_ii_subset[i])
                 eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
-                S_temp = self.__class__.chi_sq_mixture(int(g_n[i]) - 1, eig_gamma_hat, self.N_simul)
+                S_temp = chi_sq_mixture(int(g_n[i]) - 1, eig_gamma_hat, self.n_simul)
                 S_temp = (S_temp * A_n_ii[i]) / (g_n[i] - 1)
                 S_null += S_temp
 

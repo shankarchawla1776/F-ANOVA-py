@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.lines import Line2D
 import os
+from .utils import set_up_two_way, generate_two_way_comb
 
 
 def plot_means(self, plot_type='default', subgroup_indicator=None, observation_size_label=True, group_labels=None, primary_labels=None, secondary_labels=None, x_scale='', y_scale='', domain_units_label='', response_units_label='', data_transparency=0.1, legend_transparency=0.3333, data_line_width=1.75, mean_line_width=5, font_size=18, title_labels=None, save_path='', legend_location='best', num_columns=1, legend_title='', new_colors=None, position=(90, 90, 1400, 800)):
@@ -46,7 +47,7 @@ def plot_means(self, plot_type='default', subgroup_indicator=None, observation_s
         the_labels = self.group_labels
         n_labels = self.n_i
     else:
-        self.set_up_two_way()
+        set_up_two_way(self)
 
         if plot_type in ['DEFAULT', 'PRIMARY']:
             plot_type = 'PRIMARY'
@@ -61,7 +62,7 @@ def plot_means(self, plot_type='default', subgroup_indicator=None, observation_s
                     n_labels[kk] += self.n_ii[k][kk]
 
         elif plot_type == "INTERACTION":
-            the_labels = self.generate_two_way_comb()
+            the_labels = generate_two_way_comb(self)
             n_labels = np.concatenate([item for sublist in self.n_ii for item in sublist])
 
     if observation_size_label:
@@ -227,7 +228,7 @@ def plot_means(self, plot_type='default', subgroup_indicator=None, observation_s
         p, q = len(aflag0), len(bflag0)
         ab = p * q
 
-        combinations = self.generate_two_way_comb()
+        combinations = generate_two_way_comb(self)
         mean_labels = [f"{comb}: Mean" for comb in combinations]
 
         if observation_size_label:

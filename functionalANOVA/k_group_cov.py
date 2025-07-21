@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.stats import chi2, gaussian_kde
-import numpy as np
+from .utils import chi_sq_mixture, aflag_maker
 
 def k_group_cov(self, method, stat, Sigma, V):
     gsize = self.n_i
@@ -27,7 +27,7 @@ def k_group_cov(self, method, stat, Sigma, V):
         LHS /= N
 
         if LHS.shape == Sigma.shape:
-            omega_hat = LHS - np.dot(Sigma, Sigma)
+            omega_hat = LHS - (Sigma @ Sigma)
         else:
             vmu = []
             V_large = []
@@ -41,13 +41,13 @@ def k_group_cov(self, method, stat, Sigma, V):
                 V_large.append(Vi)
 
             V_large = np.vstack(V_large)
-            SigmaLarge = np.dot(V_large.T, V_large) / (self.N - self.k_groups)
-            omega_hat = LHS - np.dot(SigmaLarge, SigmaLarge)
+            SigmaLarge = (V_large.T @ V_large) / (self.N - self.k_groups)
+            omega_hat = LHS - (SigmaLarge @ SigmaLarge)
 
         eig_gamma_hat = np.real(np.linalg.eigvals(omega_hat))
         eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
-        T_null = self.__class__.chi_sq_mixture(q, eig_gamma_hat, self.N_simul)
+        T_null = chi_sq_mixture(q, eig_gamma_hat, self.n_simul)
         kde = gaussian_kde(T_null)
         pvalue = 1 - kde.integrate_box_1d(-np.inf, stat)
         pvalue = max(0,min(1,pvalue))
@@ -85,11 +85,11 @@ def k_group_cov(self, method, stat, Sigma, V):
         pvalue = 1 - chi2.cdf(stat / alpha, df)
 
     elif method == "Bootstrap-Test":
-        aflag = self.__class__.aflag_maker(gsize)
+        aflag = aflag_maker(gsize)
         aflag0 = np.unique(aflag)
-        vstat = np.zeros(self.N_boot)
+        vstat = np.zeros(self.n_boot)
 
-        for ii in range(self.N_boot):
+        for ii in range(self.n_boot):
             flag = np.random.choice(N, N, replace=True)
             py = V[flag, :]
 
@@ -106,9 +106,9 @@ def k_group_cov(self, method, stat, Sigma, V):
             R = np.vstack(R)
 
             if N > p:
-                pS = (R.T @ R) / (N - k)
+                p_s = (R.T @ R) / (N - k)
             else:
-                pS = (R @ R.T) / (N - k)
+                p_s = (R @ R.T) / (N - k)
 
             stat0 = 0
             nni = 0
@@ -118,19 +118,19 @@ def k_group_cov(self, method, stat, Sigma, V):
                 Ri = R[flag, :]
 
                 if N > p:
-                    pSi = (Ri.T @ Ri) / (ni - 1)
-                    temp = np.trace(np.linalg.matrix_power(pSi - pS, 2))
+                    p_si = (Ri.T @ Ri) / (ni - 1)
+                    temp = np.trace(np.linalg.matrix_power(p_si - p_s, 2))
                 else:
-                    pSi = (Ri @ Ri.T) / (ni - 1)
-                    temp = np.trace(np.linalg.matrix_power(pSi, 2)) - 2 * np.trace(((Ri @ R.T) @ R) @ Ri.T) / (N - k) / (ni - 1) + np.trace(np.linalg.matrix_power(pS, 2))
+                    p_si = (Ri @ Ri.T) / (ni - 1)
+                    temp = np.trace(np.linalg.matrix_power(p_si, 2)) - 2 * np.trace(((Ri @ R.T) @ R) @ Ri.T) / (N - k) / (ni - 1) + np.trace(np.linalg.matrix_power(p_s, 2))
 
                 stat0 += (ni - 1) * temp
                 nni += ni
             vstat[ii] = stat0
-        pvalue = 1 - np.sum(vstat < stat) / self.N_boot
+        pvalue = 1 - np.sum(vstat < stat) / self.n_boot
 
     elif method == "Permutation-Test":
-        aflag = self.__class__.aflag_maker(gsize)
+        aflag = aflag_maker(gsize)
         aflag0 = np.unique(aflag)
 
         vstat = np.zeros(self.N_permutations)
@@ -150,9 +150,9 @@ def k_group_cov(self, method, stat, Sigma, V):
             R = np.vstack(R)
 
             if N > p:
-                pS = (R.T @ R) / (N - k)
+                p_s = (R.T @ R) / (N - k)
             else:
-                pS = (R @ R.T) / (N - k)
+                p_s = (R @ R.T) / (N - k)
 
             stat0 = 0
             nni = 0
@@ -162,12 +162,12 @@ def k_group_cov(self, method, stat, Sigma, V):
                 Ri = R[flag, :]
 
                 if N > p:
-                    pSi = np.dot(Ri.T, Ri) / (ni - 1)
-                    temp = np.trace(np.linalg.matrix_power(pSi - pS, 2))
+                    p_si = (Ri.T @ Ri) / (ni - 1)
+                    temp = np.trace(np.linalg.matrix_power(p_si - p_s, 2))
 
                 else:
-                    pSi = np.dot(Ri, Ri.T) / (ni - 1)
-                    temp = np.trace(np.linalg.matrix_power(pSi, 2)) - 2 * np.trace(np.dot(np.dot(np.dot(Ri, R.T), R), Ri.T)) / (N - k) / (ni - 1) + np.trace(np.linalg.matrix_power(pS, 2))
+                    p_si = (Ri @ Ri.T) / (ni - 1)
+                    temp = np.trace(np.linalg.matrix_power(p_si, 2)) - 2 * np.trace(((Ri @ R.T) @ R) @ Ri.T) / (N - k) / (ni - 1) + np.trace(np.linalg.matrix_power(p_s, 2))
 
                 stat0 += (ni - 1) * temp
                 nni += ni

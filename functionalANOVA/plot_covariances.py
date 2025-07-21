@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import os
 import math
+from .utils import set_up_two_way, generate_two_way_comb
 
 
 def plot_covariances(self, plot_type='default', subgroup_indicator=None, group_labels=None, primary_labels=None, secondary_labels=None, x_scale='', y_scale='', color_scale='', domain_units_label='', response_units_label='', title_labels=None, save_path='', position=(90, 257, 2000, 800)):
@@ -82,7 +83,7 @@ def plot_covariances(self, plot_type='default', subgroup_indicator=None, group_l
         else:
             display_label = self.group_labels
     else:
-        self.set_up_two_way()
+        set_up_two_way(self)
 
         if plot_type in ['DEFAULT', 'PRIMARY']:
             plot_type = 'PRIMARY'
@@ -101,7 +102,7 @@ def plot_covariances(self, plot_type='default', subgroup_indicator=None, group_l
 
         elif plot_type == 'INTERACTION':
             fig_label = 'Primary & Secondary Factor'
-            combinations = self.generate_two_way_comb()
+            combinations = generate_two_way_comb(self)
             display_label = combinations
 
     if hasattr(self, 'echo_ensemble_recs') and self.echo_ensemble_recs is not None:

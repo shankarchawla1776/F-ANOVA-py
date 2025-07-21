@@ -3,8 +3,8 @@ import numpy as np
 
 def function_subsetter(self):
 
-    lb = np.min(self.boundsArray)
-    ub = np.max(self.boundsArray)
+    lb = np.min(self.bounds_array)
+    ub = np.max(self.bounds_array)
 
 
     if lb > np.max(self.d_grid):
@@ -25,4 +25,4 @@ def function_subsetter(self):
     global_max_idx = subset_idx[local_max_idx]
 
     self.lb_index = global_min_idx
-    self.ub_indx = global_max_idx
+    self.ub_index = global_max_idx

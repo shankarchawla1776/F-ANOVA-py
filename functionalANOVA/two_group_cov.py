@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.stats import chi2, gaussian_kde
-import numpy as np
+from .utils import chi_sq_mixture
 
 def two_group_cov(self, method, y1, y2):
     n1, L = y1.shape
@@ -11,7 +11,7 @@ def two_group_cov(self, method, y1, y2):
     N = n1 + n2
 
     Sigma = ((n1 - 1) * Sigma1 + (n2 - 1) * Sigma2) / (N - 2)
-    stat = (n1 - 1) * (n2 - 1) / (N - 2) * np.trace(np.dot((Sigma1 - Sigma2), (Sigma1 - Sigma2)))
+    stat = (n1 - 1) * (n2 - 1) / (N - 2) * np.trace((Sigma1 - Sigma2) @ (Sigma1 - Sigma2))
 
     if method == "L2-Simul":
         q = 1
@@ -27,7 +27,7 @@ def two_group_cov(self, method, y1, y2):
             V = v_array[ii]
             for jj in range(n_i):
                 v_ij = V[:, jj]
-                LHS += np.outer(v_ij, v_ij) * np.outer(v_ij, v_ij)
+                LHS += np.outer(v_ij, v_ij) @ np.outer(v_ij, v_ij)
 
         LHS /= N
 
@@ -40,7 +40,7 @@ def two_group_cov(self, method, y1, y2):
         eig_gamma_hat = np.real(np.linalg.eigvals(omega_hat))
         eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
-        T_null = self.__class__.chi_sq_mixture(q, eig_gamma_hat, self.N_simul)
+        T_null = chi_sq_mixture(q, eig_gamma_hat, self.n_simul)
 
         kde = gaussian_kde(T_null)
         pvalue = 1 - kde.integrate_box_1d(-np.inf, stat)
@@ -74,9 +74,9 @@ def two_group_cov(self, method, y1, y2):
         pvalue = 1 - chi2.cdf(stat / alpha, df)
 
     elif method == "Bootstrap-Test":
-        vstat = np.zeros(self.N_boot)
+        vstat = np.zeros(self.n_boot)
 
-        for ii in range(self.N_boot):
+        for ii in range(self.n_boot):
             flag1 = np.random.choice(n1, n1, replace=True)
             flag2 = np.random.choice(n2, n2, replace=True)
 

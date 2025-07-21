@@ -4,11 +4,14 @@ from scipy.stats import chi2, f
 from scipy.linalg import inv
 import pandas as pd
 
-def two_way_bf(self, method, data, contrast, c):
+from .one_way_BF import one_way_BF
+from .utils import aflag_maker
+
+def two_way_BF(self, method, data, contrast, c):
 
     bflag = self.SubgroupIndicator
     N = self.N
-    aflag = self.__class__.aflag_maker(self.n_i)
+    aflag = aflag_maker(self.n_i)
     dim = self.n_domain_points
 
     aflag0 = np.unique(aflag)
@@ -80,6 +83,6 @@ def two_way_bf(self, method, data, contrast, c):
     pure_data = yy[:,1:]
     A = yy[:,0]
 
-    pvalue, stat = self.one_way_bf(method, pure_data, contrast_final, c, indicator_a=A)
+    pvalue, stat = one_way_BF(method, pure_data, contrast_final, c, indicator_a=A)
 
     return pvalue, stat

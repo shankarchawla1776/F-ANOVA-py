@@ -14,5 +14,5 @@ class TimeBar:
     def delete(self):
         self.pbar.close()
 
-def setUpTimeBar(method, total):
+def set_up_time_bar(method, total):
     return TimeBar(total, f"{method}")

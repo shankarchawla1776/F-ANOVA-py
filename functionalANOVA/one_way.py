@@ -7,12 +7,14 @@ import matplotlib
 from scipy import stats
 from scipy.stats import chi2, ncx2, f
 from scipy.linalg import inv, sqrtm
+from .utils import chi_sq_mixture
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import pytest
 
-from timer import TimeBar, setUpTimeBar
-from plot_test_stats import plot_test_stats
+from .timer import TimeBar, set_up_time_bar
+from .plot_test_stats import plot_test_stats
+from .utils import l2_bootstrap, f_bootstrap, update_family_table
 
 def one_way(self, n_tests, q, eig_gamma_hat, eta_i, eta_grand, params, pair_vec):
 
@@ -48,7 +50,7 @@ def one_way(self, n_tests, q, eig_gamma_hat, eta_i, eta_grand, params, pair_vec)
         counter += 1
 
         if method == "L2-Simul":
-            T_null = self.__class__.chi_sq_mixture(q, eig_gamma_hat, self.n_simul)
+            T_null = chi_sq_mixture(q, eig_gamma_hat, self.n_simul)
 
             T_NullFitted = stats.gaussian_kde(T_null)
 
@@ -67,7 +69,7 @@ def one_way(self, n_tests, q, eig_gamma_hat, eta_i, eta_grand, params, pair_vec)
             self.CriticalValues[counter-1][1] = np.quantile(T_null, 1-self.alpha)
 
             if self.hypothesis == "FAMILY":
-                self.update_family_table(method, [T_NullFitted])
+                update_family_table(self, method, [T_NullFitted])
 
         elif method == "L2-Naive":
             p_value = np.zeros((n_tests, 1))
@@ -106,16 +108,16 @@ def one_way(self, n_tests, q, eig_gamma_hat, eta_i, eta_grand, params, pair_vec)
                         yy = np.vstack([yy, self.data[j].T])
 
                 # _, _, T_n_Boot[:,0] = self.L2Bootstrap(self, yy)
-                _, _, T_n_Boot[:,0] = self.l2_bootstrap(yy)
+                _, _, T_n_Boot[:,0] = l2_bootstrap(self, yy)
 
-                self.update_family_table(method, [self.n_boot])
+                update_family_table(self, method, [self.n_boot])
 
             elif self.hypothesis == "PAIRWISE":
                 # n_tests is the number of tests; n = self.N is real n
                 for j in range(n_tests):
 
                     self.hypothesis_LABEL = pair_vec[j]
-                    T = setUpTimeBar(method)
+                    T = set_up_time_bar(method)
 
                     Ct = C[j, :]
 
@@ -135,22 +137,22 @@ def one_way(self, n_tests, q, eig_gamma_hat, eta_i, eta_grand, params, pair_vec)
                     T.delete()
 
             p_value = np.zeros((n_tests, 1))
-            critVals = np.zeros((n_tests, 1))
+            crit_vals = np.zeros((n_tests, 1))
             for j in range(n_tests):
                 p_value[j] = np.mean(T_n_Boot[:,j] >= T_n[j])
-                critVals[j] = np.quantile(T_n_Boot[:,j], 1 - self.alpha)
+                crit_vals[j] = np.quantile(T_n_Boot[:,j], 1 - self.alpha)
 
             pvalue_matrix[:,counter-1] = p_value.flatten()
 
             self.CriticalValues[counter-1][0] = method
-            self.CriticalValues[counter-1][1] = critVals[-1]
+            self.CriticalValues[counter-1][1] = crit_vals[-1]
 
 
         elif method == "F-Simul":
 
             ratio = (self.N - self.k_groups) / q
-            T_null = self.__class__.chi_sq_mixture(q, eig_gamma_hat, self.n_simul)
-            F_null_denom = self.__class__.chi_sq_mixture(self.N - self.k_groups, eig_gamma_hat, self.n_simul)
+            T_null = chi_sq_mixture(q, eig_gamma_hat, self.n_simul)
+            F_null_denom = chi_sq_mixture(self.N - self.k_groups, eig_gamma_hat, self.n_simul)
             F_null = (T_null / F_null_denom) * ratio
             F_NullFitted = stats.gaussian_kde(F_null)
 
@@ -165,7 +167,7 @@ def one_way(self, n_tests, q, eig_gamma_hat, eta_i, eta_grand, params, pair_vec)
             pvalue_matrix[:, counter-1] = p_value.flatten()
 
             if self.hypothesis == "FAMILY":
-                self.update_family_table(method, [F_NullFitted])
+                update_family_table(self, method, [F_NullFitted])
 
             self.CriticalValues[counter-1][0] = method
             self.CriticalValues[counter-1][2] = np.quantile(F_null, 1 - self.alpha)
@@ -198,7 +200,7 @@ def one_way(self, n_tests, q, eig_gamma_hat, eta_i, eta_grand, params, pair_vec)
         elif method == "F-Bootstrap":
             F_n_Boot = np.zeros((self.n_boot, n_tests))
             ratio = (self.N - self.k_groups) / q
-            critVals = np.zeros((n_tests, 1))
+            crit_vals = np.zeros((n_tests, 1))
             ReversedT_n = np.zeros((n_tests, 1))
 
             if self.hypothesis == "FAMILY":
@@ -215,16 +217,16 @@ def one_way(self, n_tests, q, eig_gamma_hat, eta_i, eta_grand, params, pair_vec)
                         yy = np.vstack([yy, self.data[j].T])
 
                 # _, _, F_n_Boot[:,0] = self.FBootstrap(self, yy)
-                _, _, F_n_Boot[:,0] = self.f_bootstrap(yy)
+                _, _, F_n_Boot[:,0] = f_bootstrap(self, yy)
 
-                self.update_family_table(method, [self.n_boot])
+                update_family_table(self, method, [self.n_boot])
 
             elif self.hypothesis == "PAIRWISE":
                 f_n_Denominator_Boot = np.zeros((self.n_boot, n_tests))
 
                 for j in range(n_tests):
                     self.hypothesis_LABEL = pair_vec[j]
-                    T = setUpTimeBar(method)
+                    T = set_up_time_bar(method)
                     Ct = C[j, :]
 
                     d_points = self.n_domain_points
@@ -250,14 +252,14 @@ def one_way(self, n_tests, q, eig_gamma_hat, eta_i, eta_grand, params, pair_vec)
             for j in range(n_tests):
                 p_value[j] = 1 - np.sum(F_n_Boot[:,j] < F_n[j]) / float(self.n_boot)
 
-                critVals[j] = np.quantile(F_n_Boot[:,j], 1 - self.alpha)
-                ReversedT_n[j] = np.quantile((critVals[j] / ratio) * f_n_Denominator_Boot[:,j], 1 - self.alpha)
+                crit_vals[j] = np.quantile(F_n_Boot[:,j], 1 - self.alpha)
+                ReversedT_n[j] = np.quantile((crit_vals[j] / ratio) * f_n_Denominator_Boot[:,j], 1 - self.alpha)
 
             pvalue_matrix[:,counter-1] = p_value.flatten()
 
             self.CriticalValues[counter-1][0] = method
             self.CriticalValues[counter-1][1] = ReversedT_n[j]
-            self.CriticalValues[counter-1][2] = critVals[j]
+            self.CriticalValues[counter-1][2] = crit_vals[j]
 
 
     return pvalue_matrix

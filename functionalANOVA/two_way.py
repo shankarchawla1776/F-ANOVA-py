@@ -4,13 +4,14 @@ from scipy.stats import chi2, f
 from scipy.linalg import inv
 import pandas as pd
 
-from Timer import TimeBar
+from .timer import TimeBar
+from .utils import aflag_maker, chi_sq_mixture
 
 def two_way(self, method, data, contrast):
 
     N = self.N
     ddim = self.n_domain_points
-    aflag = self.__class__.aflag_maker(self.n_i)
+    aflag = aflag_maker(self.n_i)
     bflag = self.SubgroupIndicator
     aflag0 = np.unique(aflag)
     p = len(aflag0)
@@ -130,7 +131,7 @@ def two_way(self, method, data, contrast):
         eig_gamma_hat = np.linalg.eigvals(Pooled_COVAR)
         eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
-        SSH_null = self.__class__.chi_sq_mixture(r, eig_gamma_hat, self.N_simul)
+        SSH_null = chi_sq_mixture(r, eig_gamma_hat, self.n_simul)
         SSH_NullFitted = stats.gaussian_kde(SSH_null)
         pvalue = 1 - SSH_NullFitted.integrate_box_1d(-np.inf, stat)
         pvalue = max(0,min(1,pvalue))
@@ -154,8 +155,8 @@ def two_way(self, method, data, contrast):
         eig_gamma_hat = np.linalg.eigvals(Pooled_COVAR)
         eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
-        SSH_null = self.__class__.chi_sq_mixture(r, eig_gamma_hat, self.N_simul)
-        SSE_null = self.__class__.chi_sq_mixture(N-k, eig_gamma_hat, self.N_simul)
+        SSH_null = chi_sq_mixture(r, eig_gamma_hat, self.n_simul)
+        SSE_null = chi_sq_mixture(N-k, eig_gamma_hat, self.n_simul)
 
         ratio = (N-k) / r
 
@@ -167,13 +168,13 @@ def two_way(self, method, data, contrast):
 
     elif method == "L2-Bootstrap":
         stat = SSH0
-        Bstat = np.zeros(self.N_boot)
+        Bstat = np.zeros(self.n_boot)
 
 
-        # ts = self.setUpTimeBar(method)
-        ts = TimeBar(self.N_boot, method)
+        # ts = self.set_up_time_bar(method)
+        ts = TimeBar(self.n_boot, method)
 
-        for b in range(self.N_boot):
+        for b in range(self.n_boot):
             Bmu = []
             V_boot = []
             counter = 0
@@ -206,12 +207,12 @@ def two_way(self, method, data, contrast):
 
     elif method == "F-Bootstrap":
         stat = SSH0 / SSE0 * (N-k) / r
-        # ts = self.setUpTimeBar(method)
-        ts = TimeBar(self.N_boot, method)
+        # ts = self.set_up_time_bar(method)
+        ts = TimeBar(self.n_boot, method)
         ratio = (N-k)/r
-        Bstat = np.zeros(self.N_boot)
+        Bstat = np.zeros(self.n_boot)
 
-        for b in range(self.N_boot):
+        for b in range(self.n_boot):
             Bmu = []
             V = []
             counter = 0
