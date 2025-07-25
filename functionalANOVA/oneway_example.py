@@ -28,3 +28,7 @@ bounds = (-np.inf, np.inf)
 
 myANOVA = functionalANOVA(data_list=group_arrays, d_grid=time, grid_bounds=bounds,
                           group_labels=['Group A', 'Group B', 'Group C'])
+
+# TODO 
+# myANOVA.plot_means()
+# myANOVA.plot_covariances()
