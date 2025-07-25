@@ -197,3 +197,25 @@ def generate_two_way_comb(self):
             combination = f"{self.primary_labels[K]}-{self.secondary_labels[KK]}"
             combinations.append(combination)
     return combinations
+
+
+def construct_pairwise_contrast_matrix(total_groups: int) -> np.ndarray:
+    """
+    Construct all pairwise contrast coefficient rows for total_groups.
+    Returns a contrast matrix C of shape (num_pairs, total_groups).
+    """
+    k = total_groups
+
+    if k == 2:
+        return np.hstack([np.eye(k - 1), -np.ones((k - 1, 1))])
+
+    blocks = []
+    for mm in range(k - 1):  # mm = 0 to k-2
+        block = np.zeros((k - mm - 1, k - 1))
+        for cc in range(k - mm - 1):
+            block[cc, mm] = 1
+            block[cc, cc + mm + 1] = -1
+        blocks.append(block)
+
+    C = np.vstack(blocks)
+    return C

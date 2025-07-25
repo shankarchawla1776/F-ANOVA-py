@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from typing import Tuple, Optional, List, Union, Any, ClassVar, cast
+from typing import Tuple, Optional, List, Union, Any, ClassVar, cast, Sequence
 from dataclasses import dataclass, field
 import warnings
 from functionalANOVA.core import utils
@@ -164,7 +164,66 @@ class functionalANOVA():
     def plot_covariances(self):
         #TODO Migrate and integrate plotting method here
         pass
+    
+    def oneway_bf(self,
+                  n_boot: int = 10_000,
+                  n_simul: int = 10_000,
+                  alpha: float = 0.05,
+                  methods: Optional[Sequence[str]] = None,
+                  hypothesis: Optional[Sequence[str]] = None):
+        
+        # Sometype of checking for inputs above
+        
+        if methods is not None:
+            self._cast_anova_methods(methods)
+            
+        yy = np.vstack([arr.T for arr in self.data])
 
+        pair_vec = []
+        
+        # Set up Hypothesis
+        match self.hypothesis:
+            case "PAIRWISE":
+                C = utils.construct_pairwise_contrast_matrix(self._groups.k)
+                n_tests = C.shape[0]
+                if self._labels.group is None:
+                    raise ValueError("Group labels must be provided.")
+                if len(self._labels.group) != self._groups.k:
+                    raise ValueError(
+                        f"Each group must have exactly one label. "
+                        f"Got {len(self._labels.group)} labels for {self._groups.k} groups.")
+            case "FAMILY":
+                n_tests = 1
+                pair_vec.append("FAMILY")
+                k = self._groups.k
+                C = np.hstack([np.eye(k - 1), -np.ones((k - 1, 1))])
+            case _:
+                raise ValueError("Unknown Hypothesis provided")
+        
+        # Iterate over Methods
+        n_methods = len(self._methods.anova_methods_used)
+
+    def _cast_anova_methods(self, method):
+        """
+        Filters self._methods.anova_methods_used to keep only valid methods.
+        Warns about any unrecognized method names.
+        """
+        valid_methods = set(self._methods.anova_methods)
+        original = sorted(list(method), reverse=True) # Maintain L2 first than F-test
+
+        # Keep only valid methods (case-insensitive match)
+        filtered = [m for m in original if m in valid_methods]
+        excluded = [m for m in original if m not in valid_methods]
+
+        self._methods.anova_methods_used = tuple(filtered)
+
+        if excluded:
+            warnings.warn(f"These unknown methods were excluded: {' & '.join(excluded)}")
+
+        assert len(filtered) >= 1, (
+            "No ANOVA methods were selected!\n"
+            f"Must be at least one of the following: {', '.join(self._methods.anova_methods)}"
+        )    
     def _validate_inputs(self):
         
         # Validate bounds
