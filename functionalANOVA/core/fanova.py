@@ -4,6 +4,7 @@ from typing import Tuple, Optional, List, Union, Any, ClassVar, cast
 from dataclasses import dataclass, field
 import warnings
 from functionalANOVA.core import utils
+from functionalANOVA.core.plot_means import plot_means
 
 @dataclass  # class to store these labels
 class ANOVALabels:
@@ -64,6 +65,26 @@ class ANOVAGroups:
     contrast_factor:  Optional[int] = None # Either 1 for Primary, 2 for Secondary
 
 class functionalANOVA():
+    @property
+    def tables(self) -> ANOVATables:
+        return self._tables
+
+    @property
+    def methods(self) -> ANOVAMethods:
+        return self._methods
+    
+    @property
+    def labels(self) -> ANOVALabels:
+        return  self._labels
+    
+    @property
+    def units(self) -> ANOVAUnits:
+        return  self._units
+    
+    @property
+    def groups(self) -> ANOVAGroups:
+        return  self.groups
+    
     def __init__(
         self,
         data_list: List[np.ndarray] | Tuple[np.ndarray],
@@ -136,26 +157,14 @@ class functionalANOVA():
             self._set_up_two_way()  # Creates Indicator Matrices and default Labels
             self._n_ii_generator()  # Creates Secondary Size Array
 
-    @property
-    def tables(self) -> ANOVATables:
-        return self._tables
+    def plot_means(self):
+        #TODO Migrate and integrate plotting method here
+        pass
 
-    @property
-    def methods(self) -> ANOVAMethods:
-        return self._methods
-    
-    @property
-    def labels(self) -> ANOVALabels:
-        return  self._labels
-    
-    @property
-    def units(self) -> ANOVAUnits:
-        return  self._units
-    
-    @property
-    def groups(self) -> ANOVAGroups:
-        return  self.groups
-    
+    def plot_covariances(self):
+        #TODO Migrate and integrate plotting method here
+        pass
+
     def _validate_inputs(self):
         
         # Validate bounds
@@ -169,19 +178,6 @@ class functionalANOVA():
 
             
         #TODO need to validate more inputs 
-    @staticmethod    
-    def _cast_to_1D(arr):
-        arr = np.asarray(arr)
-                
-        if not np.issubdtype(arr.dtype, np.number):
-            raise ValueError("d_grid must contain numeric values.")
-        
-        if arr.ndim == 1:
-            return arr
-        elif arr.ndim == 2 and (arr.shape[0] == 1 or arr.shape[1] == 1):
-            return np.ravel(arr)  # returns a view if possible
-        else:
-            raise ValueError(f"Input must be a 1D vector, or 2D row/column vector, but got array with shape {arr.shape}")
         
     def _function_subsetter(self):
 
@@ -208,7 +204,6 @@ class functionalANOVA():
 
         self.lb_index = global_min_idx
         self.ub_index = global_max_idx
-
 
     def _verifyIndicator(self):
         """
@@ -310,3 +305,18 @@ class functionalANOVA():
             raise ValueError("Missing combinations detected. See warnings above.")
 
         self.n_ii = p_cell
+        
+    @staticmethod    
+    def _cast_to_1D(arr):
+        arr = np.asarray(arr)
+                
+        if not np.issubdtype(arr.dtype, np.number):
+            raise ValueError("d_grid must contain numeric values.")
+        
+        if arr.ndim == 1:
+            return arr
+        elif arr.ndim == 2 and (arr.shape[0] == 1 or arr.shape[1] == 1):
+            return np.ravel(arr)  # returns a view if possible
+        else:
+            raise ValueError(f"Input must be a 1D vector, or 2D row/column vector, but got array with shape {arr.shape}")
+    
