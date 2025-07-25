@@ -189,34 +189,6 @@ def update_family_table(self, A_method, params):
             self.OneWay_P_Table.loc[mask, "Parameter 1 Value"] = params[0]
             self.OneWay_P_Table.loc[mask, "Parameter 2 Value"] = "nonparametric"
 
-def set_up_two_way(self):
-    if hasattr(self, 'subgroup_indicator') and self.subgroup_indicator is not None:
-        self.B_groups = len(np.unique(self.subgroup_indicator))
-    else:
-        self.B_groups = 1
-
-    self.A_groups = self.k_groups
-    self.AB_groups = self.A_groups * self.B_groups
-
-    if (not hasattr(self, 'primary_labels') or self.primary_labels is None) and (not hasattr(self, 'secondary_labels') or self.secondary_labels is None):
-        self.generic_group_labels = True
-
-    if not hasattr(self, 'primary_labels') or self.primary_labels is None:
-        self.primary_labels = [str(i+1) for i in range(len(self.data))]
-
-    if not hasattr(self, 'secondary_labels') or self.secondary_labels is None:
-        if hasattr(self, 'subgroup_indicator') and self.subgroup_indicator is not None:
-            unique_indicators = np.unique(self.subgroup_indicator)
-            self.secondary_labels = [chr(65 + i) for i in range(len(unique_indicators))]
-        else:
-            self.secondary_labels = ['A']
-
-    assert len(self.primary_labels) == self.A_groups, "Labels for each Primary factor level must have a one-to-one correspondence to each level"
-
-    assert len(self.secondary_labels) == self.B_groups, "Labels for each Secondary factor level must have a one-to-one correspondence to each level"
-
-    if hasattr(self, 'group_labels') and self.group_labels is not None:
-        assert self.group_labels is None, 'TwoWay ANOVA requires using "primary_labels" and "secondary_labels" as input arguments.\nIt doesnt support the "group_labels" argument due to ambiguity.'
 
 def generate_two_way_comb(self):
     combinations = []
