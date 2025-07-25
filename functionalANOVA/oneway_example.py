@@ -1,17 +1,11 @@
 import numpy as np
 import pandas as pd          
 import os
-
-print("🛠 Running from:", os.getcwd())
 from functionalANOVA.core.fanova import functionalANOVA
-
-
 
 # Import Data
 script_dir = os.path.dirname(__file__)  # folder containing the script
 df = pd.read_csv(os.path.join(script_dir,'Data' ,"gait_data.csv"))  # replace with your actual file path
-
-
 
 # Extract all group columns based on column name patterns
 group1_cols = [col for col in df.columns if col.startswith("group1")]
