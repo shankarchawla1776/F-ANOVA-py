@@ -199,6 +199,7 @@ def generate_two_way_comb(self):
     return combinations
 
 
+
 def construct_pairwise_contrast_matrix(total_groups: int) -> np.ndarray:
     """
     Construct all pairwise contrast coefficient rows for total_groups.
@@ -211,7 +212,7 @@ def construct_pairwise_contrast_matrix(total_groups: int) -> np.ndarray:
 
     blocks = []
     for mm in range(k - 1):  # mm = 0 to k-2
-        block = np.zeros((k - mm - 1, k - 1))
+        block = np.zeros((k - mm - 1, k))  # <-- must be (rows, k), not (rows, k-1)
         for cc in range(k - mm - 1):
             block[cc, mm] = 1
             block[cc, cc + mm + 1] = -1

@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.lines import Line2D
 import os
-from .utils import set_up_two_way, generate_two_way_comb
+# from .utils import set_up_two_way, generate_two_way_comb
 
 
 def plot_means(self, plot_type='default', subgroup_indicator=None, observation_size_label=True, group_labels=None, primary_labels=None, secondary_labels=None, x_scale='', y_scale='', domain_units_label='', response_units_label='', data_transparency=0.1, legend_transparency=0.3333, data_line_width=1.75, mean_line_width=5, font_size=18, title_labels=None, save_path='', legend_location='best', num_columns=1, legend_title='', new_colors=None, position=(90, 90, 1400, 800)):

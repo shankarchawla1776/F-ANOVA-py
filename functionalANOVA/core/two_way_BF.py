@@ -4,7 +4,7 @@ from scipy.stats import chi2, f
 from scipy.linalg import inv
 import pandas as pd
 
-from .one_way_BF import one_way_BF
+# from .one_way_BF import one_way_BF
 from .utils import aflag_maker
 
 def two_way_BF(self, method, data, contrast, c):
