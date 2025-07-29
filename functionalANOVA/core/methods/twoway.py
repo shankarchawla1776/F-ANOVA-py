@@ -4,9 +4,10 @@ from scipy.stats import chi2, f
 from scipy.linalg import inv
 import pandas as pd
 from functionalANOVA.core import utils
+from functionalANOVA.core.methods.oneway import run_onewayBF
 
 # TODO: Needs work
-def two_way(self, method, data, contrast):
+def run_twoway(self, method, data, contrast):
 
     N = self.N
     ddim = self.n_domain_points
@@ -257,11 +258,11 @@ def two_way(self, method, data, contrast):
     return pvalue, stat
 
 # TODO: Needs work
-def two_way_BF(self, method, data, contrast, c):
+def run_twowayBF(self, method, data, contrast, c):
 
     bflag = self.SubgroupIndicator
     N = self.N
-    aflag = aflag_maker(self.n_i)
+    aflag = utils.aflag_maker(self.n_i)
     dim = self.n_domain_points
 
     aflag0 = np.unique(aflag)
@@ -297,11 +298,11 @@ def two_way_BF(self, method, data, contrast, c):
 
     yy = np.vstack(yy)
 
-    if self.Weights == "UNIFORM":
+    if self.weights == "UNIFORM":
         u = np.ones(p) / p
         v = np.ones(q) / q
 
-    elif self.Weights == "PROPORTIONAL":
+    elif self.weights == "PROPORTIONAL":
         u = np.sum(gsize, axis=1) / N
         v = np.sum(gsize, axis=0) / N
 
@@ -312,20 +313,20 @@ def two_way_BF(self, method, data, contrast, c):
         Hp = np.hstack([np.eye(p-1), -np.ones((p-1,1))])
         Hq = np.hstack([np.eye(q-1), -np.ones((q-1,1))])
 
-        if self.Hypothesis == "INTERACTION":
+        if self.hypothesis == "INTERACTION":
             H = np.kron(Hp, Hq)
-        elif self.Hypothesis == "PRIMARY":
+        elif self.hypothesis == "PRIMARY":
             H = Hp
-        elif self.Hypothesis == "SECONDARY":
+        elif self.hypothesis == "SECONDARY":
             H = Hq
     else:
         H = contrast
 
-    if self.Hypothesis == "INTERACTION":
+    if self.hypothesis == "INTERACTION":
         contrast_final = H @ np.kron(Ap, Aq)
-    elif self.Hypothesis == "PRIMARY":
+    elif self.hypothesis == "PRIMARY":
         contrast_final = H @ np.kron(Ap, v.reshape(1, -1))
-    elif self.Hypothesis == "SECONDARY":
+    elif self.hypothesis == "SECONDARY":
         contrast_final = H @ np.kron(u.reshape(1, -1), Aq)
     else:
         contrast_final = contrast
@@ -333,6 +334,6 @@ def two_way_BF(self, method, data, contrast, c):
     pure_data = yy[:,1:]
     A = yy[:,0]
 
-    pvalue, stat = one_way_BF(method, pure_data, contrast_final, c, indicator_a=A)
+    pvalue, stat = run_onewayBF(self, method, pure_data, contrast_final, c, indicator_a=A)
 
     return pvalue, stat

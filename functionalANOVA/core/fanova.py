@@ -4,8 +4,7 @@ from typing import Tuple, Optional, List, Union, Any, ClassVar, cast, Sequence
 from dataclasses import dataclass, field
 import warnings
 from functionalANOVA.core import utils
-from functionalANOVA.core.plot_means import plot_means
-from functionalANOVA.core.methods import oneway
+from functionalANOVA.core.methods import oneway, twoway, plotting
 
 @dataclass  # class to store these labels
 class ANOVALabels:
@@ -173,6 +172,12 @@ class functionalANOVA():
     
     def run_onewayBF(self, *args, **kwargs):
         return oneway.run_onewayBF(self, *args, **kwargs)
+    
+    def run_twoway(self, *args, **kwargs):
+        return twoway.run_twoway(self, *args, **kwargs)
+    
+    def run_twowayBF(self, *args, **kwargs):
+        return twoway.run_twowayBF(self, *args, **kwargs)
     
     def oneway_bf(self,
                   n_boot: int = 10_000,
