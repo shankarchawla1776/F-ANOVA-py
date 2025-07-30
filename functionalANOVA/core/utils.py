@@ -189,7 +189,6 @@ def update_family_table(self, A_method, params):
             self.OneWay_P_Table.loc[mask, "Parameter 1 Value"] = params[0]
             self.OneWay_P_Table.loc[mask, "Parameter 2 Value"] = "nonparametric"
 
-
 def generate_two_way_comb(self):
     combinations = []
     for K in range(self.A_groups):
@@ -198,9 +197,8 @@ def generate_two_way_comb(self):
             combinations.append(combination)
     return combinations
 
-
-
 def construct_pairwise_contrast_matrix(total_groups: int) -> np.ndarray:
+    
     """
     Construct all pairwise contrast coefficient rows for total_groups.
     Returns a contrast matrix C of shape (num_pairs, total_groups).
@@ -220,3 +218,60 @@ def construct_pairwise_contrast_matrix(total_groups: int) -> np.ndarray:
 
     C = np.vstack(blocks)
     return C
+
+def compute_group_means(k_groups, n_domain_points, data, n_i, N):
+    # Initialize
+    eta_i = np.zeros((n_domain_points, k_groups))
+    build_Covar_star = np.empty((n_domain_points, 0))
+
+    # Loop over groups
+    for k in range(k_groups):
+        group_data = data[k]  # shape: (n_domain_points, n_samples_in_group)
+        eta_i[:, k] = np.mean(group_data, axis=1)  # mean across samples for each timepoint
+        zero_mean_subset = group_data - eta_i[:, k, np.newaxis]
+        build_Covar_star = np.concatenate((build_Covar_star, zero_mean_subset), axis=1)
+
+    # Compute grand mean
+    eta_grand = np.sum(eta_i * np.asarray(n_i)[np.newaxis, :], axis=1) / N
+    
+    return eta_i, eta_grand, build_Covar_star
+
+def beta_hat(COV):
+    """
+    Compute beta_hat from a covariance matrix.
+    Equivalent to trace(COV^2) / trace(COV)
+    """
+    return np.trace(COV @ COV) / np.trace(COV)
+
+
+def kappa_hat(COV):
+    """
+    Compute kappa_hat from a covariance matrix.
+    Equivalent to (trace(COV)^2) / trace(COV^2)
+    """
+    return (np.trace(COV) ** 2) / np.trace(COV @ COV)
+
+def unbiased_estimator_trace_squared(n, k, COV):
+    """
+    Unbiased estimator for trace(COV)^2
+    """
+    n_adj = ((n - k) * (n - k + 1)) / ((n - k - 1) * (n - k + 2))
+    factor = np.trace(COV) ** 2 - (2 * np.trace(COV @ COV)) / (n - k + 1)
+    return n_adj * factor
+
+
+def unbiased_estimator_trace_cov_squared(n, k, COV):
+    """
+    Unbiased estimator for trace(COV @ COV)
+    """
+    n_adj = ((n - k) ** 2) / ((n - k - 1) * (n - k + 2))
+    factor = np.trace(COV @ COV) - (np.trace(COV) ** 2) / (n - k)
+    return n_adj * factor
+
+def beta_hat_unbias(n, k, COV):
+    trace_cov_squared = unbiased_estimator_trace_cov_squared(n, k, COV)
+    return trace_cov_squared / np.trace(COV)
+
+def kappa_hat_unbias(n, k, COV):
+    return unbiased_estimator_trace_squared(n, k, COV) / unbiased_estimator_trace_cov_squared(n, k, COV)
+     

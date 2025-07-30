@@ -65,6 +65,24 @@ class ANOVAGroups:
     contrast: Optional[np.ndarray] = None # User Specified Constrast vector
     contrast_factor:  Optional[int] = None # Either 1 for Primary, 2 for Secondary
 
+@dataclass
+class HypothesisInfo:
+    SSH_t: np.ndarray
+    pair_vec: list[str]
+    q: int
+    n_tests: int
+    C: Optional[np.ndarray] = None
+    D: Optional[np.ndarray] = None
+
+@dataclass
+class AnovaStatistics:
+    T_n: np.ndarray
+    F_n: Optional[np.ndarray] = None
+    beta_hat: Optional[float] = None
+    kappa_hat: Optional[float] = None
+    beta_hat_unbias: Optional[float] = None
+    kappa_hat_unbias: Optional[float] = None
+
 class functionalANOVA():
     
     @property
@@ -156,7 +174,7 @@ class functionalANOVA():
                 self._labels.group = [f"{i+1}" for i in range(self._groups.k)] #Automatically Assign Group Labels
                 self._labels.generic_group = True
         else:
-            self._set_up_two_way()  # Creates Indicator Matrices and default Labels
+            self._setup_twoway()  # Creates Indicator Matrices and default Labels
             self._n_ii_generator()  # Creates Secondary Size Array
 
     # def plot_means(self):
@@ -167,24 +185,79 @@ class functionalANOVA():
     #     #TODO Migrate and integrate plotting method here
     #     pass
     
-    def run_oneway(self, *args, **kwargs):
+    def _run_oneway(self, *args, **kwargs):
         return oneway.run_oneway(self, *args, **kwargs)
     
-    def run_onewayBF(self, *args, **kwargs):
+    def _run_onewayBF(self, *args, **kwargs):
         return oneway.run_onewayBF(self, *args, **kwargs)
     
-    def run_twoway(self, *args, **kwargs):
+    def _run_twoway(self, *args, **kwargs):
         return twoway.run_twoway(self, *args, **kwargs)
     
-    def run_twowayBF(self, *args, **kwargs):
+    def _run_twowayBF(self, *args, **kwargs):
         return twoway.run_twowayBF(self, *args, **kwargs)
     
+    def oneway(self,
+                  n_boot: int = 10_000,
+                  n_simul: int = 10_000,
+                  alpha: float = 0.05,
+                  methods: Optional[Sequence[str]] = None,
+                  hypothesis: Optional[Sequence[str]] = None):
+        # Still need to add args of GroupLabels and showSimulPlot
+        
+        #Sometype of checking for inputs above
+        self._validate_stat_inputs(alpha, n_boot, n_simul, methods, hypothesis)
+        n_methods = len(self._methods.anova_methods_used)
+    
+        eta_i, eta_grand, build_Covar_star = utils.compute_group_means(self._groups.k, self.n_domain_points, self.data, self.n_i, self.N)
+        H0 = self._computeSSH_and_pairs(eta_i, eta_grand)
+        
+        if np.all(H0.SSH_t < np.finfo(float).eps):
+            warnings.warn("Pointwise between-subject variation is 0. Check for duplicated data matrices.")
+        
+        
+        # Compute estimated covariance
+        gamma_hat = (1 / (self.N - self._groups.k)) * (build_Covar_star @ build_Covar_star.T)  #changed transpose order
+        
+        # Only Positive eigen values
+        eig_gamma_hat = np.linalg.eigvalsh(gamma_hat)
+        eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
+
+
+        # Compute SSE(t)
+        SSE_t = (self.N - self._groups.k) * np.diag(gamma_hat) # Pointwise within-subject  (Group/Categorical) variations
+        
+        
+        match self.hypothesis:
+            case 'FAMILY':
+                 self._tables.oneway = pd.DataFrame({
+                     'Family-Wise Method': list(self._methods.anova_methods_used),
+                     'Test-Statistic': [np.nan] * n_methods,
+                     'P-Value': [np.nan] * n_methods,
+                     'Verdict': [''] * n_methods,
+                     'Parameter 1 Name': [''] * n_methods,
+                     'Parameter 1 Value': [None] * n_methods,
+                     'Parameter 2 Name': [''] * n_methods,
+                     'Parameter 2 Value': [None] * n_methods})
+                 
+            case 'PAIRWISE':
+                self._tables.oneway = pd.DataFrame({'Hypothesis': H0.pair_vec})
+            case _:
+                pass
+            
+        params = self._setup_oneway(H0, SSE_t, gamma_hat)   
+         
+        # TODO: Implement this    
+        p_value_matrix = self._run_oneway(eig_gamma_hat, eta_i, eta_grand, params, H0)
+        
     def oneway_bf(self,
                   n_boot: int = 10_000,
                   n_simul: int = 10_000,
                   alpha: float = 0.05,
                   methods: Optional[Sequence[str]] = None,
                   hypothesis: Optional[Sequence[str]] = None):
+        
+        # Still need to add args of GroupLabels
         
         # Sometype of checking for inputs above
         self._validate_stat_inputs(alpha, n_boot, n_simul, methods, hypothesis)
@@ -252,7 +325,7 @@ class functionalANOVA():
                 else:
                     raise ValueError(f"Unsupported hypothesis type: {self.hypothesis}")
 
-                p_value[ii], statistic = self.run_onewayBF(method, yy, C_input, c)
+                p_value[ii], statistic = self._run_onewayBF(method, yy, C_input, c)
 
             p_value_matrix[:, counter] = p_value
             test_stat[0, counter] = statistic
@@ -521,7 +594,87 @@ class functionalANOVA():
         N_subgroup = self._groups.subgroup_indicator.size
         assert N_subgroup == self.N, (f"subgroup_indicator has {N_subgroup} elements, expected {self.N}")
 
-    def _set_up_two_way(self):
+    def _setup_oneway(self, H0, SSE_t, gamma_hat):
+        import numpy as np
+
+        is_family = self.hypothesis == "FAMILY"
+
+        # Initialize
+        T_n = np.sum(H0.SSH_t, axis=0)
+        F_n = np.zeros(1)
+        beta_hat = 0
+        kappa_hat = 0
+        beta_hat_unbias = 0
+        kappa_hat_unbias = 0
+        
+        if self._tables.oneway is None:
+            raise ValueError('One Way Table wasnt set up properly')
+
+        # FAMILY: Fill Test-Statistic for L2
+        if is_family and any("L2" in m for m in self._methods.anova_methods_used):
+            mask = [("L2" in m) for m in self._methods.anova_methods_used]
+            self._tables.oneway.loc[mask, "Test-Statistic"] = T_n
+
+        # F-test methods
+        if any("F" in m for m in self._methods.anova_methods_used):
+            numerator = T_n / H0.q
+            denominator = np.sum(SSE_t) / (self.N - self._groups.k)
+            F_n = numerator / denominator
+
+            if is_family:
+                mask = [("F" in m) for m in self._methods.anova_methods_used]
+                self._tables.oneway.loc[mask, "Test-Statistic"] = F_n
+
+        # Naive Approx
+        if any("Naive" in m for m in self._methods.anova_methods_used):
+            beta_hat = utils.beta_hat(gamma_hat)
+            kappa_hat = utils.kappa_hat(gamma_hat)
+
+            if is_family:
+                mask_1 = np.array(["Naive" in m for m in self._methods.anova_methods_used])
+                mask_2 = np.array(["F" in m for m in self._methods.anova_methods_used])
+
+                only_naive = mask_1 & ~mask_2
+                self._tables.oneway.loc[only_naive, "Parameter 1 Name"] = "beta"
+                self._tables.oneway.loc[only_naive, "Parameter 2 Name"] = "d"
+                self._tables.oneway.loc[only_naive, "Parameter 1 Value"] = beta_hat
+                self._tables.oneway.loc[only_naive, "Parameter 2 Value"] = H0.q * kappa_hat
+
+                naive_f = mask_1 & mask_2
+                d1 = H0.q * kappa_hat
+                d2 = (self.N - self._groups.k) * kappa_hat
+                self._tables.oneway.loc[naive_f, "Parameter 1 Name"] = "d1"
+                self._tables.oneway.loc[naive_f, "Parameter 2 Name"] = "d2"
+                self._tables.oneway.loc[naive_f, "Parameter 1 Value"] = d1
+                self._tables.oneway.loc[naive_f, "Parameter 2 Value"] = d2
+
+        # BiasReduced Approx
+        if any("BiasReduced" in m for m in self._methods.anova_methods_used):
+            beta_hat_unbias = utils.beta_hat_unbias(self.N, self._groups.k, gamma_hat)
+            kappa_hat_unbias = utils.kappa_hat_unbias(self.N, self._groups.k, gamma_hat)
+
+            if is_family:
+                mask_1 = np.array(["BiasReduced" in m for m in self._methods.anova_methods_used])
+                mask_2 = np.array(["F" in m for m in self._methods.anova_methods_used])
+
+                only_bias = mask_1 & ~mask_2
+                self._tables.oneway.loc[only_bias, "Parameter 1 Name"] = "beta"
+                self._tables.oneway.loc[only_bias, "Parameter 2 Name"] = "d"
+                self._tables.oneway.loc[only_bias, "Parameter 1 Value"] = beta_hat_unbias
+                self._tables.oneway.loc[only_bias, "Parameter 2 Value"] = H0.q * kappa_hat_unbias
+
+                bias_f = mask_1 & mask_2
+                d1 = H0.q * kappa_hat_unbias
+                d2 = (self.N - self._groups.k) * kappa_hat_unbias
+                self._tables.oneway.loc[bias_f, "Parameter 1 Name"] = "d1"
+                self._tables.oneway.loc[bias_f, "Parameter 2 Name"] = "d2"
+                self._tables.oneway.loc[bias_f, "Parameter 1 Value"] = d1
+                self._tables.oneway.loc[bias_f, "Parameter 2 Value"] = d2
+
+        # Return as dictionary
+        return AnovaStatistics(T_n, F_n, beta_hat, kappa_hat, beta_hat_unbias,kappa_hat_unbias)
+
+    def _setup_twoway(self):
         
       
         self._verifyIndicator()
@@ -551,7 +704,7 @@ class functionalANOVA():
         if self.labels.group:
             raise ValueError('TwoWay ANOVA requires using "primary_labels" and "secondary_labels" as input arguments.\nIt doesnt support the "group_labels" argument due to ambiguity.')
 
-    def _set_up_time_bar(self, method):
+    def _setup_time_bar(self, method):
         match method:
             case "L2-Bootstrap":
                 match self.hypothesis:
@@ -617,7 +770,53 @@ class functionalANOVA():
             raise ValueError("Missing combinations detected. See warnings above.")
 
         self.n_ii = p_cell
+ 
+    def _computeSSH_and_pairs(self, eta_i, eta_grand):
+        pair_vec = []
         
+        if self.hypothesis == "FAMILY":
+            q = self._groups.k - 1  # rank of contrast matrix
+            n_tests = 1
+            SSH_k = np.zeros((self.n_domain_points, self._groups.k))
+
+            for k in range(self._groups.k):
+                SSH_k[:, k] = self.n_i[k] * (eta_i[:, k] - eta_grand) ** 2
+
+            SSH_t = np.sum(SSH_k, axis=1)
+            pair_vec = ["FAMILY"]
+            C = None
+            D = None
+
+        elif self.hypothesis == "PAIRWISE":
+            C = utils.construct_pairwise_contrast_matrix(self._groups.k)  # Expected shape: (n_tests, k_groups)
+            n_tests = C.shape[0]
+
+            if self._labels.group is None:
+                raise ValueError('Group labels must be set')
+
+            assert len(self._labels.group) == self._groups.k, "Each Group Must Have Exactly One Label Associated to it"
+
+            c = np.zeros((1, self.n_domain_points))
+            D = np.diag(1.0 / np.array(self.n_i))
+            q = 1  # rank of PAIRWISE contrasts
+            SSH_t = np.zeros((self.n_domain_points, n_tests))
+            pair_vec = []
+
+            for cc in range(n_tests):
+                Ct = C[cc, :]  # shape: (k_groups,)
+                part12 = Ct @ eta_i.T - c  # shape: (1, n_domain_points)
+                SSH_t[:, cc] = (part12 ** 2).flatten() * np.linalg.inv(Ct @ D @ Ct.T)
+
+                # Label for the contrast
+                indices = np.where(C[cc, :] != 0)[0]
+                t1 = self._labels.group[indices[0]]
+                t2 = self._labels.group[indices[1]]
+                pair_vec.append(f"{t1} & {t2}") 
+        else:
+            raise ValueError(f'Unknown Hypothesis: {self.hypothesis}')   
+                
+        return HypothesisInfo(SSH_t, pair_vec, q, n_tests, C, D)
+    
     @staticmethod    
     def _cast_to_1D(arr):
         arr = np.asarray(arr)
