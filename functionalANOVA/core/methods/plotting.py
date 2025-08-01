@@ -601,7 +601,7 @@ def plot_covariances(self, plot_type='default', subgroup_indicator=None, group_l
 
     return fig
 
-
+# TODO: Some option or ability to save these plots
 def plot_test_stats(p_value, alpha, null_dist, test_stat, test_name, hypothesis, hypothesis_label):
     p_value = float(p_value)
 
