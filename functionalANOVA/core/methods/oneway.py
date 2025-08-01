@@ -13,7 +13,8 @@ def run_oneway(self, eig_gamma_hat, eta_i, params, H0):
 
     pvalue_matrix = np.zeros((H0.n_tests, n_methods))
 
-    self.CriticalValues = [[None, None, None] for _ in range(n_methods)]
+    # Utilized for Future Work
+    # self.CriticalValues = [[None, None, None] for _ in range(n_methods)]
 
     counter = 0
 
@@ -37,8 +38,8 @@ def run_oneway(self, eig_gamma_hat, eta_i, params, H0):
 
             pvalue_matrix[:, counter-1] = p_value.flatten()
 
-            self.CriticalValues[counter-1][0] = method
-            self.CriticalValues[counter-1][1] = np.quantile(T_null, 1-self.alpha)
+            # self.CriticalValues[counter-1][0] = method
+            # self.CriticalValues[counter-1][1] = np.quantile(T_null, 1-self.alpha)
 
             if self.hypothesis == "FAMILY":
                 utils.update_family_table(self._tables.oneway, method, [T_NullFitted])
@@ -51,8 +52,8 @@ def run_oneway(self, eig_gamma_hat, eta_i, params, H0):
 
             pvalue_matrix[:, counter-1] = p_value.flatten()
 
-            self.CriticalValues[counter-1][0] = method
-            self.CriticalValues[counter-1][1] = params.beta_hat * ncx2.ppf(1 - self.alpha, H0.q * params.kappa_hat, 0)
+            # self.CriticalValues[counter-1][0] = method
+            # self.CriticalValues[counter-1][1] = params.beta_hat * ncx2.ppf(1 - self.alpha, H0.q * params.kappa_hat, 0)
 
          case "L2-BiasReduced":
             p_value = np.zeros((H0.n_tests,1))
@@ -61,8 +62,8 @@ def run_oneway(self, eig_gamma_hat, eta_i, params, H0):
 
             pvalue_matrix[:, counter-1] = p_value.flatten()
 
-            self.CriticalValues[counter-1][0] = method
-            self.CriticalValues[counter-1][1] = params.beta_hat_unbias * ncx2.ppf(1 - self.alpha, H0.q * params.kappa_hat_unbias,0)
+            # self.CriticalValues[counter-1][0] = method
+            # self.CriticalValues[counter-1][1] = params.beta_hat_unbias * ncx2.ppf(1 - self.alpha, H0.q * params.kappa_hat_unbias,0)
 
          case "L2-Bootstrap":
             T_n_Boot = np.zeros((self.n_boot, H0.n_tests))
@@ -106,8 +107,8 @@ def run_oneway(self, eig_gamma_hat, eta_i, params, H0):
 
             pvalue_matrix[:,counter-1] = p_value.flatten()
 
-            self.CriticalValues[counter-1][0] = method
-            self.CriticalValues[counter-1][1] = crit_vals[-1]
+            # self.CriticalValues[counter-1][0] = method
+            # self.CriticalValues[counter-1][1] = crit_vals[-1]
 
          case "F-Simul":
 
@@ -131,9 +132,9 @@ def run_oneway(self, eig_gamma_hat, eta_i, params, H0):
             if self.hypothesis == "FAMILY":
                 utils.update_family_table(self._tables.oneway, method, [F_NullFitted])
 
-            self.CriticalValues[counter-1][0] = method
-            self.CriticalValues[counter-1][2] = np.quantile(F_null, 1 - self.alpha)
-            self.CriticalValues[counter-1][1] = np.quantile((self.CriticalValues[counter-1][2] / ratio) * F_null_denom, 1 - self.alpha)
+            # self.CriticalValues[counter-1][0] = method
+            # self.CriticalValues[counter-1][2] = np.quantile(F_null, 1 - self.alpha)
+            # self.CriticalValues[counter-1][1] = np.quantile((self.CriticalValues[counter-1][2] / ratio) * F_null_denom, 1 - self.alpha)
 
          case "F-Naive":
             p_value = np.zeros((H0.n_tests,1))
@@ -145,8 +146,8 @@ def run_oneway(self, eig_gamma_hat, eta_i, params, H0):
             A = H0.q * params.kappa_hat
             B = (self.N - self._groups.k) * params.kappa_hat
 
-            self.CriticalValues[counter-1][0] = method
-            self.CriticalValues[counter-1][2] = f.ppf(1 - self.alpha, A, B)
+            # self.CriticalValues[counter-1][0] = method
+            # self.CriticalValues[counter-1][2] = f.ppf(1 - self.alpha, A, B)
 
          case "F-BiasReduced":
             p_value = np.zeros((H0.n_tests, 1))
@@ -158,10 +159,10 @@ def run_oneway(self, eig_gamma_hat, eta_i, params, H0):
 
             pvalue_matrix[:, counter-1] = p_value.flatten()
 
-            self.CriticalValues[counter-1][0] = method
-            self.CriticalValues[counter-1][2] = f.ppf(1 - self.alpha, H0.q * params.
-                                                      kappa_hat_unbias,
-                                                      (self.N - self._groups.k) * params.kappa_hat_unbias)
+            # self.CriticalValues[counter-1][0] = method
+            # self.CriticalValues[counter-1][2] = f.ppf(1 - self.alpha, H0.q * params.
+            #                                           kappa_hat_unbias,
+            #                                           (self.N - self._groups.k) * params.kappa_hat_unbias)
 
          case "F-Bootstrap":
             F_n_Boot = np.zeros((self.n_boot, H0.n_tests))
@@ -219,9 +220,9 @@ def run_oneway(self, eig_gamma_hat, eta_i, params, H0):
 
             pvalue_matrix[:,counter-1] = p_value.flatten()
 
-            self.CriticalValues[counter-1][0] = method
-            self.CriticalValues[counter-1][1] = ReversedT_n[j]
-            self.CriticalValues[counter-1][2] = crit_vals[j]
+            # self.CriticalValues[counter-1][0] = method
+            # self.CriticalValues[counter-1][1] = ReversedT_n[j]
+            # self.CriticalValues[counter-1][2] = crit_vals[j]
 
 
     return pvalue_matrix
