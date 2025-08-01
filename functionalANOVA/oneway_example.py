@@ -29,6 +29,8 @@ bounds = (-np.inf, np.inf)
 myANOVA = functionalANOVA(data_list=group_arrays, d_grid=time, grid_bounds=bounds,
                           group_labels=['Group A', 'Group B', 'Group C'])
 
+myANOVA.show_simul_plots = True
+
 myANOVA.oneway(hypothesis='family')
 myANOVA.oneway(hypothesis='pairwise')
 

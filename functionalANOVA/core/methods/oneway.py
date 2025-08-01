@@ -4,6 +4,7 @@ from scipy import stats
 from scipy.stats import chi2, f, ncx2
 from scipy.linalg import inv, sqrtm
 from tqdm import tqdm
+from functionalANOVA.core.methods import plotting
 
 
 # TODO: Needs work
@@ -34,7 +35,7 @@ def run_oneway(self, eig_gamma_hat, eta_i, params, H0):
                 p_value[j] = max(0,min(1,p_value[j]))
 
                 if self.show_simul_plots:
-                    plot_test_stats(p_value[j], self.alpha, T_null, params.T_n[j], method + " test", self.hypothesis, H0.pair_vec[j])
+                    plotting.plot_test_stats(p_value[j], self.alpha, T_null, params.T_n[j], method + " test", self.hypothesis, H0.pair_vec[j])
 
             pvalue_matrix[:, counter-1] = p_value.flatten()
 
@@ -125,7 +126,7 @@ def run_oneway(self, eig_gamma_hat, eta_i, params, H0):
                 p_value[j] = max(0,min(1,p_value[j]))
                 
                 if self.show_simul_plots:
-                    plot_test_stats(p_value[j], self.alpha, F_null, params.F_n[j], method + " test", self.hypothesis, H0.pair_vec[j])
+                    plotting.plot_test_stats(p_value[j], self.alpha, F_null, params.F_n[j], method + " test", self.hypothesis, H0.pair_vec[j])
 
             pvalue_matrix[:, counter-1] = p_value.flatten()
 
