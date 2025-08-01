@@ -1,57 +1,39 @@
 from functionalANOVA.core import utils
 import numpy as np
 from scipy import stats
-from scipy.stats import chi2, f
+from scipy.stats import chi2, f, ncx2
 from scipy.linalg import inv, sqrtm
 from tqdm import tqdm
 
+
 # TODO: Needs work
-def run_oneway(self, n_tests, q, eig_gamma_hat, eta_i, eta_grand, params, pair_vec):
+def run_oneway(self, eig_gamma_hat, eta_i, params, H0):
 
-    def _group_booter(data_matrix_cell, n_domain_points, k_groups, n_i, n):
-        eta_i_star = np.zeros((n_domain_points, k_groups))
-        build_covar_star = np.zeros((n_domain_points, 0))
+    n_methods = len(self._methods.anova_methods_used)
 
-        for k in range(k_groups):
-            indices = np.random.choice(data_matrix_cell[k].shape[1], n_i[k], replace=True)
-            data_subset_boot = data_matrix_cell[k][:,indices]
-
-            eta_i_star[:,k] = np.mean(data_subset_boot, axis=1)
-
-            zero_mean_data_k_subset = data_subset_boot - eta_i_star[:,k].reshape(-1,1)
-            build_covar_star = np.hstack((build_covar_star, zero_mean_data_k_subset))
-
-        gamma_hat_star = (1 / (n-k_groups)) * (build_covar_star.T @ build_covar_star)
-        eta_grand_star = np.sum(eta_i_star * n_i, axis=1) / n
-
-        return eta_i_star, eta_grand_star, gamma_hat_star
-
-    n_methods = len(self.ANOVA_Methods_Used)
-
-    pvalue_matrix = np.zeros((n_tests, n_methods))
+    pvalue_matrix = np.zeros((H0.n_tests, n_methods))
 
     self.CriticalValues = [[None, None, None] for _ in range(n_methods)]
 
-    T_n, F_n, beta_hat, kappa_hat, beta_hat_unbias, kappa_hat_unbias, C, D = params
-
     counter = 0
 
-    for method in self.ANOVA_Methods_Used:
+    for method in self._methods.anova_methods_used:
         counter += 1
 
-        if method == "L2-Simul":
-            T_null = chi_sq_mixture(q, eig_gamma_hat, self.n_simul)
+        match method:
+         case "L2-Simul":
+            T_null = utils.chi_sq_mixture(H0.q, eig_gamma_hat, self.n_simul)
 
             T_NullFitted = stats.gaussian_kde(T_null)
 
-            p_value = np.zeros((n_tests, 1))
+            p_value = np.zeros((H0.n_tests, 1))
 
-            for j in range(n_tests):
-                p_value[j] = 1 - T_NullFitted.integrate_box_1d(-np.inf, T_n[j])
+            for j in range(H0.n_tests):
+                p_value[j] = 1 - T_NullFitted.integrate_box_1d(-np.inf, params.T_n[j])
                 p_value[j] = max(0,min(1,p_value[j]))
 
-                if self.show_simul_plot:
-                    plot_test_stats(p_value[j], self.alpha, T_null, T_n[j], method + " test", self.hypothesis, pair_vec[j])
+                if self.show_simul_plots:
+                    plot_test_stats(p_value[j], self.alpha, T_null, params.T_n[j], method + " test", self.hypothesis, H0.pair_vec[j])
 
             pvalue_matrix[:, counter-1] = p_value.flatten()
 
@@ -59,77 +41,67 @@ def run_oneway(self, n_tests, q, eig_gamma_hat, eta_i, eta_grand, params, pair_v
             self.CriticalValues[counter-1][1] = np.quantile(T_null, 1-self.alpha)
 
             if self.hypothesis == "FAMILY":
-                update_family_table(self, method, [T_NullFitted])
+                utils.update_family_table(self._tables.oneway, method, [T_NullFitted])
 
-        elif method == "L2-Naive":
-            p_value = np.zeros((n_tests, 1))
+         case "L2-Naive":
+            p_value = np.zeros((H0.n_tests, 1))
 
-            for j in range(n_tests):
-                p_value[j] = 1 - ncx2.cdf(T_n[j] / beta_hat, q * kappa_hat, 0)
-
-            pvalue_matrix[:, counter-1] = p_value.flatten()
-
-            self.CriticalValues[counter-1][0] = method
-            self.CriticalValues[counter-1][1] = beta_hat * ncx2.ppf(1 - self.alpha, q * kappa_hat, 0)
-
-        elif method == "L2-BiasReduced":
-            p_value = np.zeros((n_tests,1))
-            for j in range(n_tests):
-                p_value[j] = 1 - ncx2.cdf(T_n[j] / beta_hat_unbias, q * kappa_hat_unbias, 0)
+            for j in range(H0.n_tests):
+                p_value[j] = 1 - ncx2.cdf(params.T_n[j] / params.beta_hat, H0.q * params.kappa_hat, 0)
 
             pvalue_matrix[:, counter-1] = p_value.flatten()
 
             self.CriticalValues[counter-1][0] = method
-            self.CriticalValues[counter-1][1] = beta_hat_unbias * ncx2.ppf(1 - self.alpha, q * kappa_hat_unbias,0)
+            self.CriticalValues[counter-1][1] = params.beta_hat * ncx2.ppf(1 - self.alpha, H0.q * params.kappa_hat, 0)
 
-        elif method == "L2-Bootstrap":
-            T_n_Boot = np.zeros((self.n_boot, n_tests))
+         case "L2-BiasReduced":
+            p_value = np.zeros((H0.n_tests,1))
+            for j in range(H0.n_tests):
+                p_value[j] = 1 - ncx2.cdf(params.T_n[j] / params.beta_hat_unbias, H0.q * params.kappa_hat_unbias, 0)
 
-            if self.hypothesis == "FAMILY":
-                self.hypothesis_LABEL = pair_vec[0]
+            pvalue_matrix[:, counter-1] = p_value.flatten()
 
-                yy = np.array([])
+            self.CriticalValues[counter-1][0] = method
+            self.CriticalValues[counter-1][1] = params.beta_hat_unbias * ncx2.ppf(1 - self.alpha, H0.q * params.kappa_hat_unbias,0)
 
-                for j in range(self.k_groups):
-                    # yy = np.append(yy, self.data[j].T)
-                    if j == 0:
-                        yy = self.data[j].T
-                    else:
-                        yy = np.vstack([yy, self.data[j].T])
+         case "L2-Bootstrap":
+            T_n_Boot = np.zeros((self.n_boot, H0.n_tests))
 
-                # _, _, T_n_Boot[:,0] = self.L2Bootstrap(self, yy)
-                _, _, T_n_Boot[:,0] = l2_bootstrap(self, yy)
+            match self.hypothesis:
+                case "FAMILY":
+                    self._labels.hypothesis = H0.pair_vec[0]
 
-                update_family_table(self, method, [self.n_boot])
+                    yy = np.array([])
 
-            elif self.hypothesis == "PAIRWISE":
-                # n_tests is the number of tests; n = self.N is real n
-                for j in range(n_tests):
+                    for j in range(self._groups.k):
+                        # yy = np.append(yy, self.data[j].T)
+                        if j == 0:
+                            yy = self.data[j].T
+                        else:
+                            yy = np.vstack([yy, self.data[j].T])
 
-                    self.hypothesis_LABEL = pair_vec[j]
-                    T = set_up_time_bar(method)
+                    T_n_Boot= utils.l2_bootstrap(self, yy,  method)
 
-                    Ct = C[j, :]
+                    utils.update_family_table(self._tables.oneway, method, [self.n_boot])
+                
+                case "PAIRWISE":
+                    # n_tests is the number of tests; n = self.N is real n
+                    for j in range(H0.n_tests):
+                        self._labels.hypothesis = H0.pair_vec[j]
+                        Ct = H0.C[j, :]
+                        for k in tqdm(range(self.n_boot), desc=self._setup_time_bar(method)):
+                            eta_i_star, _, _ = utils.group_booter(self.data, self.n_domain_points, self._groups.k, self.n_i, self.N)
+                            rh_side = Ct @ H0.D @ Ct.T
+                            if rh_side.ndim == 0:
+                                SSH_t = ((Ct @ (eta_i_star - eta_i).T)**2) * 1/rh_side
+                            else:
+                                SSH_t = ((Ct @ (eta_i_star - eta_i).T)**2) * inv(rh_side)
+                            T_n_Boot[k,j] = np.sum(SSH_t)
 
-                    d_points = self.n_domain_points
-                    k_group = self.k_groups
-                    n_iii = self.n_i
-                    g_data = self.data
-                    n = self.N
-
-                    for k in range(self.n_boot):
-                        eta_i_star, _, _ = _group_booter(g_data, d_points, k_group, n_iii, n)
-                        SSH_t = ((Ct @ (eta_i_star - eta_i).T)**2) * inv(Ct @ D @ Ct.T)
-                        T_n_Boot[k,j] = np.sum(SSH_t)
-                        T.progress()
-
-                    T.stop()
-                    T.delete()
-
-            p_value = np.zeros((n_tests, 1))
-            crit_vals = np.zeros((n_tests, 1))
-            for j in range(n_tests):
-                p_value[j] = np.mean(T_n_Boot[:,j] >= T_n[j])
+            p_value = np.zeros((H0.n_tests, 1))
+            crit_vals = np.zeros((H0.n_tests, 1))
+            for j in range(H0.n_tests):
+                p_value[j] = np.mean(T_n_Boot[:,j] >= params.T_n[j])
                 crit_vals[j] = np.quantile(T_n_Boot[:,j], 1 - self.alpha)
 
             pvalue_matrix[:,counter-1] = p_value.flatten()
@@ -137,110 +109,110 @@ def run_oneway(self, n_tests, q, eig_gamma_hat, eta_i, eta_grand, params, pair_v
             self.CriticalValues[counter-1][0] = method
             self.CriticalValues[counter-1][1] = crit_vals[-1]
 
+         case "F-Simul":
 
-        elif method == "F-Simul":
-
-            ratio = (self.N - self.k_groups) / q
-            T_null = chi_sq_mixture(q, eig_gamma_hat, self.n_simul)
-            F_null_denom = chi_sq_mixture(self.N - self.k_groups, eig_gamma_hat, self.n_simul)
+            ratio = (self.N - self._groups.k) / H0.q
+            T_null = utils.chi_sq_mixture(H0.q, eig_gamma_hat, self.n_simul)
+            F_null_denom = utils.chi_sq_mixture(self.N - self._groups.k, eig_gamma_hat, self.n_simul)
             F_null = (T_null / F_null_denom) * ratio
             F_NullFitted = stats.gaussian_kde(F_null)
 
-            p_value = np.zeros((n_tests, 1))
+            p_value = np.zeros((H0.n_tests, 1))
 
-            for j in range(n_tests):
-                p_value[j] = 1 - F_NullFitted.integrate_box_1d(-np.inf, F_n[j])
+            for j in range(H0.n_tests):
+                p_value[j] = 1 - F_NullFitted.integrate_box_1d(-np.inf, params.F_n[j])
                 p_value[j] = max(0,min(1,p_value[j]))
-                if self.show_simul_plot:
-                    plot_test_stats(p_value[j], self.alpha, F_null, F_n[j], method + " test", self.hypothesis, pair_vec[j])
+                
+                if self.show_simul_plots:
+                    plot_test_stats(p_value[j], self.alpha, F_null, params.F_n[j], method + " test", self.hypothesis, H0.pair_vec[j])
 
             pvalue_matrix[:, counter-1] = p_value.flatten()
 
             if self.hypothesis == "FAMILY":
-                update_family_table(self, method, [F_NullFitted])
+                utils.update_family_table(self._tables.oneway, method, [F_NullFitted])
 
             self.CriticalValues[counter-1][0] = method
             self.CriticalValues[counter-1][2] = np.quantile(F_null, 1 - self.alpha)
             self.CriticalValues[counter-1][1] = np.quantile((self.CriticalValues[counter-1][2] / ratio) * F_null_denom, 1 - self.alpha)
 
-        elif method == "F-Naive":
-            p_value = np.zeros((n_tests,1))
-            for j in range(n_tests):
-                p_value[j] = 1 - f.cdf(F_n[j], q * kappa_hat, (self.N - self.k_groups) * kappa_hat)
+         case "F-Naive":
+            p_value = np.zeros((H0.n_tests,1))
+            for j in range(H0.n_tests):
+                p_value[j] = 1 - f.cdf(params.F_n[j], H0.q * params.kappa_hat, (self.N - self._groups.k) * params.kappa_hat)
 
             pvalue_matrix[:, counter-1] = p_value.flatten()
 
-            A = q * kappa_hat
-            B = (self.N - self.k_groups) * kappa_hat
+            A = H0.q * params.kappa_hat
+            B = (self.N - self._groups.k) * params.kappa_hat
 
             self.CriticalValues[counter-1][0] = method
             self.CriticalValues[counter-1][2] = f.ppf(1 - self.alpha, A, B)
 
-        elif method == "F-BiasReduced":
-            p_value = np.zeros((n_tests, 1))
+         case "F-BiasReduced":
+            p_value = np.zeros((H0.n_tests, 1))
 
-            for j in range(n_tests):
-                p_value[j] = 1 - f.cdf(F_n[j], q * kappa_hat_unbias, (self.N - self.k_groups) * kappa_hat_unbias)
+            for j in range(H0.n_tests):
+                p_value[j] = 1 - f.cdf(params.F_n[j],
+                                       H0.q * params.kappa_hat_unbias,
+                                       (self.N - self._groups.k) * params.kappa_hat_unbias)
 
             pvalue_matrix[:, counter-1] = p_value.flatten()
 
             self.CriticalValues[counter-1][0] = method
-            self.CriticalValues[counter-1][2] = f.ppf(1 - self.alpha, q * kappa_hat_unbias, (self.N - self.k_groups) * kappa_hat_unbias)
+            self.CriticalValues[counter-1][2] = f.ppf(1 - self.alpha, H0.q * params.
+                                                      kappa_hat_unbias,
+                                                      (self.N - self._groups.k) * params.kappa_hat_unbias)
 
-        elif method == "F-Bootstrap":
-            F_n_Boot = np.zeros((self.n_boot, n_tests))
-            ratio = (self.N - self.k_groups) / q
-            crit_vals = np.zeros((n_tests, 1))
-            ReversedT_n = np.zeros((n_tests, 1))
+         case "F-Bootstrap":
+            F_n_Boot = np.zeros((self.n_boot, H0.n_tests))
+            ratio = (self.N - self._groups.k) / H0.q
+            crit_vals = np.zeros((H0.n_tests, 1))
+            ReversedT_n = np.zeros((H0.n_tests, 1))
 
-            if self.hypothesis == "FAMILY":
-                self.hypothesis_LABEL = pair_vec[0]
-                f_n_Denominator_Boot = np.nan * np.ones((self.n_boot, n_tests))
-                yy = np.array([])
+            match self.hypothesis:
+                case "FAMILY":
+                    self._labels.hypothesis = H0.pair_vec[0]
+                    f_n_Denominator_Boot = np.nan * np.ones((self.n_boot, H0.n_tests))
+                    yy = np.array([])
 
-                for j in range(self.k_groups):
-                    # yy = np.append(yy, self.data[j].T)
+                    for j in range(self._groups.k):
+                        # yy = np.append(yy, self.data[j].T)
 
-                    if j == 0:
-                        yy = self.data[j].T
-                    else:
-                        yy = np.vstack([yy, self.data[j].T])
+                        if j == 0:
+                            yy = self.data[j].T
+                        else:
+                            yy = np.vstack([yy, self.data[j].T])
+                    F_n_Boot = utils.f_bootstrap(self, yy, method)
+                    utils.update_family_table(self._tables.oneway, method, [self.n_boot])
 
-                # _, _, F_n_Boot[:,0] = self.FBootstrap(self, yy)
-                _, _, F_n_Boot[:,0] = f_bootstrap(self, yy)
+                case "PAIRWISE":
+                    f_n_Denominator_Boot = np.zeros((self.n_boot, H0.n_tests))
 
-                update_family_table(self, method, [self.n_boot])
+                    for j in range(H0.n_tests):
+                        self._labels.hypothesis  = H0.pair_vec[j]
+                        Ct = H0.C[j, :]
 
-            elif self.hypothesis == "PAIRWISE":
-                f_n_Denominator_Boot = np.zeros((self.n_boot, n_tests))
+                        for k in tqdm(range(self.n_boot), desc=self._setup_time_bar(method)):
+                            eta_i_star, _, gamma_hat_star = utils.group_booter(self.data, self.n_domain_points, self._groups.k, self.n_i, self.N)
+                            f_n_Denominator_Boot[k,j] = np.trace(gamma_hat_star) * (self.N - self._groups.k)
+                            
+                            rh_side = Ct @ H0.D @ Ct.T
+                            
+                            if rh_side.ndim == 0:
+                                SSH_t = ((Ct @ (eta_i_star - eta_i).T)**2) * 1/rh_side
+                            else:
+                                SSH_t = ((Ct @ (eta_i_star - eta_i).T)**2) * inv(rh_side)
 
-                for j in range(n_tests):
-                    self.hypothesis_LABEL = pair_vec[j]
-                    T = set_up_time_bar(method)
-                    Ct = C[j, :]
+                            T_n_Boot = np.sum(SSH_t)
+                            F_n_Boot[k,:] = (T_n_Boot / f_n_Denominator_Boot[k,j]) * ratio
+                            
+                case _:
+                    raise ValueError(f'Unsupported hypothesis: {self.hypothesis}')
 
-                    d_points = self.n_domain_points
-                    k_group = self.k_groups
-                    n_iii = self.n_i
-                    g_data = self.data
-                    n = self.N
+            p_value = np.zeros((H0.n_tests, 1))
 
-                    for k in range(self.n_boot):
-                        eta_i_star, _, gamma_hat_star = _group_booter(g_data, d_points, k_group, n_iii, n)
-                        f_n_Denominator_Boot[k,j] = np.trace(gamma_hat_star) * (n - k_group)
-                        SSH_t = ((Ct @ (eta_i_star - eta_i).T)**2) * inv(Ct @ D @ Ct.T)
-
-                        T_n_Boot = np.sum(SSH_t)
-                        F_n_Boot[k,:] = (T_n_Boot / f_n_Denominator_Boot[k,j]) * ratio
-                        T.progress()
-
-                    T.stop()
-                    T.delete()
-
-            p_value = np.zeros((n_tests, 1))
-
-            for j in range(n_tests):
-                p_value[j] = 1 - np.sum(F_n_Boot[:,j] < F_n[j]) / float(self.n_boot)
+            for j in range(H0.n_tests):
+                p_value[j] = 1 - np.sum(F_n_Boot[:,j] < params.F_n[j]) / float(self.n_boot)
 
                 crit_vals[j] = np.quantile(F_n_Boot[:,j], 1 - self.alpha)
                 ReversedT_n[j] = np.quantile((crit_vals[j] / ratio) * f_n_Denominator_Boot[:,j], 1 - self.alpha)
@@ -451,7 +423,7 @@ def run_onewayBF(self, method, data, contrast, c, indicator_a=None):
         if method == "F-Bootstrap":
             Bstat = np.zeros(self.n_boot)
 
-            for ii in tqdm(range(self.n_boot), desc=self._set_up_time_bar(method)):
+            for ii in tqdm(range(self.n_boot), desc=self._setup_time_bar(method)):
                 Bmu = np.empty((0, p))
                 tr_gamma = []
 
@@ -561,7 +533,7 @@ def run_onewayBF(self, method, data, contrast, c, indicator_a=None):
     elif method == "L2-Bootstrap":
         Bstat = np.zeros(self.n_boot)
 
-        for ii in tqdm(range(self.n_boot), desc=self._set_up_time_bar(method)):
+        for ii in tqdm(range(self.n_boot), desc=self._setup_time_bar(method)):
 
             Bmu = np.empty((0, p))
             for i in range(k):

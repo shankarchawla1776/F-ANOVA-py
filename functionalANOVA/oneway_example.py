@@ -30,10 +30,10 @@ myANOVA = functionalANOVA(data_list=group_arrays, d_grid=time, grid_bounds=bound
                           group_labels=['Group A', 'Group B', 'Group C'])
 
 myANOVA.oneway(hypothesis='family')
-# myANOVA.oneway(hypothesis='pairwise')
+myANOVA.oneway(hypothesis='pairwise')
 
-# myANOVA.oneway_bf(hypothesis='family')
-# myANOVA.oneway_bf(hypothesis='pairwise')
+myANOVA.oneway_bf(hypothesis='family')
+myANOVA.oneway_bf(hypothesis='pairwise')
 
 # TODO 
 # myANOVA.plot_means()

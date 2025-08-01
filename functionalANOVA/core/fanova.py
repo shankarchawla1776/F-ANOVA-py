@@ -66,7 +66,7 @@ class ANOVAGroups:
     contrast_factor:  Optional[int] = None # Either 1 for Primary, 2 for Secondary
 
 @dataclass
-class HypothesisInfo:
+class HypothesisInfo:  # Used just for vanilla Oneway 
     SSH_t: np.ndarray
     pair_vec: list[str]
     q: int
@@ -75,7 +75,7 @@ class HypothesisInfo:
     D: Optional[np.ndarray] = None
 
 @dataclass
-class AnovaStatistics:
+class AnovaStatistics:  # Used just for vanilla Oneway 
     T_n: np.ndarray
     F_n: Optional[np.ndarray] = None
     beta_hat: Optional[float] = None
@@ -226,8 +226,7 @@ class functionalANOVA():
 
         # Compute SSE(t)
         SSE_t = (self.N - self._groups.k) * np.diag(gamma_hat) # Pointwise within-subject  (Group/Categorical) variations
-        
-        
+         
         match self.hypothesis:
             case 'FAMILY':
                  self._tables.oneway = pd.DataFrame({
@@ -244,11 +243,17 @@ class functionalANOVA():
                 self._tables.oneway = pd.DataFrame({'Hypothesis': H0.pair_vec})
             case _:
                 pass
-            
+        
+        T_hypothesis = pd.DataFrame({'Hypothesis': H0.pair_vec})    
         params = self._setup_oneway(H0, SSE_t, gamma_hat)   
-         
-        # TODO: Implement this    
-        p_value_matrix = self._run_oneway(eig_gamma_hat, eta_i, eta_grand, params, H0)
+          
+        p_value_matrix = self._run_oneway(eig_gamma_hat, eta_i, params, H0)
+        
+        self._prep_tables('oneway', p_value_matrix, T_hypothesis=T_hypothesis, test_stat=None)
+        
+        if self.verbose:
+            self._data_summary_report_one_way(ANOVA_TYPE='homoskedastic')
+            self._show_table(self._tables.oneway)
         
     def oneway_bf(self,
                   n_boot: int = 10_000,
@@ -338,33 +343,49 @@ class functionalANOVA():
             self._data_summary_report_one_way(ANOVA_TYPE='heteroskedastic')
             self._show_table(self._tables.oneway_bf)
 
-
     def _prep_tables(self, anova_method, p_value_matrix, T_hypothesis, test_stat):
         match anova_method:
             case 'oneway':
-                pass
+                match self.hypothesis:
+                    case "PAIRWISE":
+                        T_p_value = pd.DataFrame(p_value_matrix, columns=self._methods.anova_methods_used)
+                        self._tables.oneway = pd.concat([T_hypothesis, T_p_value], axis=1)
+
+                    case "FAMILY":
+                        assert self._tables.oneway is not None, 'Oneway table is not properly setup'
+                        
+                        self._tables.oneway["P-Value"] = np.array(p_value_matrix).flatten()
+
+                        signif_results = self._tables.oneway["P-Value"] < self.alpha
+
+                        self._tables.oneway.loc[signif_results, "Verdict"] = "Reject Null Hypothesis for Alternative Hypothesis"
+                        self._tables.oneway.loc[~signif_results, "Verdict"] = "Fail to Reject Null Hypothesis"
+
+                        # if self.consistantTable:
+                        #     self.OneWay_P_Table = self.OneWay_P_Table.iloc[:, :4]
             case 'oneway_bf':
-                if self.hypothesis == "PAIRWISE":
-                    # Use all methods
-                    T_p_value = pd.DataFrame(
-                        p_value_matrix,
-                        columns=self._methods.anova_methods_used
-                    )
-                    self._tables.oneway_bf = pd.concat([T_hypothesis, T_p_value], axis=1)
+                match self.hypothesis:
+                    case "PAIRWISE":
+                        # Use all methods
+                        T_p_value = pd.DataFrame(
+                            p_value_matrix,
+                            columns=self._methods.anova_methods_used
+                        )
+                        self._tables.oneway_bf = pd.concat([T_hypothesis, T_p_value], axis=1)
 
-                elif self.hypothesis == "FAMILY":
-                    # Keep the full table
-                    if not isinstance(self._tables.oneway_bf, pd.DataFrame):
-                        raise ValueError('oneway_bf should be a pandas dataframe')
-                    
-                    self._tables.oneway_bf = self._tables.oneway_bf.copy()
+                    case "FAMILY":
+                        # Keep the full table
+                        if not isinstance(self._tables.oneway_bf, pd.DataFrame):
+                            raise ValueError('oneway_bf should be a pandas dataframe')
+                        
+                        self._tables.oneway_bf = self._tables.oneway_bf.copy()
 
-                    self._tables.oneway_bf["P-Value"] = p_value_matrix.flatten()
-                    self._tables.oneway_bf["Test-Statistic"] = test_stat.flatten()
+                        self._tables.oneway_bf["P-Value"] = p_value_matrix.flatten()
+                        self._tables.oneway_bf["Test-Statistic"] = test_stat.flatten()
 
-                    signif_results = self._tables.oneway_bf["P-Value"] < self.alpha
-                    self._tables.oneway_bf.loc[signif_results, "Verdict"] = ("Reject Null Hypothesis for Alternative Hypothesis")
-                    self._tables.oneway_bf.loc[~signif_results, "Verdict"] = ("Fail to Reject Null Hypothesis")
+                        signif_results = self._tables.oneway_bf["P-Value"] < self.alpha
+                        self._tables.oneway_bf.loc[signif_results, "Verdict"] = ("Reject Null Hypothesis for Alternative Hypothesis")
+                        self._tables.oneway_bf.loc[~signif_results, "Verdict"] = ("Fail to Reject Null Hypothesis")
             case 'twoway':
                 pass
             case 'twoway_bf':
@@ -402,6 +423,14 @@ class functionalANOVA():
             temp_table["P-Value"] = temp_table["P-Value"].apply(
                 lambda x: f"{x:6.{self._tables.sig_figs}f}"
             )
+            
+
+            # Conditionally format Parameter 1/2 Value columns
+            for col in ["Parameter 1 Value", "Parameter 2 Value"]:
+                if col in temp_table.columns:
+                    temp_table[col] = temp_table[col].apply(
+                        lambda x: f"{x:6.{self._tables.sig_figs}f}" if isinstance(x, float) else x
+                    )
 
             # Sort rows based on order in self.ANOVA_Methods
             method_order = {method: i for i, method in enumerate(self._methods.anova_methods)}
@@ -601,6 +630,10 @@ class functionalANOVA():
 
         # Initialize
         T_n = np.sum(H0.SSH_t, axis=0)
+        
+        if T_n.ndim == 0:
+            T_n = T_n.reshape(1, 1)
+        
         F_n = np.zeros(1)
         beta_hat = 0
         kappa_hat = 0
@@ -703,7 +736,7 @@ class functionalANOVA():
 
         if self.labels.group:
             raise ValueError('TwoWay ANOVA requires using "primary_labels" and "secondary_labels" as input arguments.\nIt doesnt support the "group_labels" argument due to ambiguity.')
-
+ 
     def _setup_time_bar(self, method):
         match method:
             case "L2-Bootstrap":
@@ -805,7 +838,14 @@ class functionalANOVA():
             for cc in range(n_tests):
                 Ct = C[cc, :]  # shape: (k_groups,)
                 part12 = Ct @ eta_i.T - c  # shape: (1, n_domain_points)
-                SSH_t[:, cc] = (part12 ** 2).flatten() * np.linalg.inv(Ct @ D @ Ct.T)
+                rh_side = Ct @ D @ Ct.T
+                
+                if rh_side.ndim == 0:
+                    SSH_t[:, cc] = (part12 ** 2).flatten() * 1/rh_side
+                else:
+                    SSH_t[:, cc] = (part12 ** 2).flatten() * np.linalg.inv(rh_side)
+                
+                
 
                 # Label for the contrast
                 indices = np.where(C[cc, :] != 0)[0]

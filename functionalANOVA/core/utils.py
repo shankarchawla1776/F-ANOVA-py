@@ -3,7 +3,7 @@ import pandas as pd
 import types
 import matplotlib.pyplot as plt
 import matplotlib
-
+from tqdm import tqdm
 from scipy import stats
 from scipy.stats import chi2, ncx2, f
 from scipy.linalg import inv, sqrtm
@@ -23,10 +23,10 @@ def aflag_maker(n_i):
         aflag.extend(indicator)
     return np.array(aflag)
 
-def l2_bootstrap(self, yy):
+def l2_bootstrap(obj, yy, method):
     n, p = yy.shape
 
-    gsize = np.array(self.n_i)
+    gsize = np.array(obj.n_i)
     aflag = aflag_maker(gsize)
     aflag0 = np.unique(aflag)
     k = len(aflag0)
@@ -56,9 +56,9 @@ def l2_bootstrap(self, yy):
 
     stat = np.sum(SSR)
 
-    btstat = np.zeros(self.n_boot)
+    btstat = np.zeros(obj.n_boot)
 
-    for ii in range(self.n_boot):
+    for ii in tqdm(range(obj.n_boot), desc=obj._setup_time_bar(method)):
         btvmu = []
 
         for i in range(k):
@@ -81,14 +81,14 @@ def l2_bootstrap(self, yy):
 
         btstat[ii] = np.sum(btSSR)
 
-    p_value = np.mean(btstat >= stat)
+    # p_value = np.mean(btstat >= stat)
 
-    return p_value, stat, btstat
+    return  np.expand_dims(btstat, axis=1)
 
-def f_bootstrap(self, yy):
+def f_bootstrap(obj, yy, method):
     n, p = yy.shape
 
-    gsize = np.array(self.n_i)
+    gsize = np.array(obj.n_i)
     aflag = aflag_maker(gsize)
 
     aflag0 = np.unique(aflag)
@@ -127,9 +127,9 @@ def f_bootstrap(self, yy):
     A = np.trace(Sigma)
     stat = np.sum(SSR) / A / (k - 1)
 
-    btstat = np.zeros(self.n_boot)
+    btstat = np.zeros(obj.n_boot)
 
-    for ii in range(self.n_boot):
+    for ii in tqdm(range(obj.n_boot), desc=obj._setup_time_bar(method)):
         btvmu = []
         btz = []
 
@@ -163,31 +163,9 @@ def f_bootstrap(self, yy):
         btA = np.trace(btSigma)
         btstat[ii] = np.sum(btSSR) / btA / (k - 1)
 
-    p_value = np.mean(btstat >= stat)
+    # p_value = np.mean(btstat >= stat)
 
-    return p_value, stat, btstat
-
-def update_family_table(self, A_method, params):
-    if A_method in ["L2-Simul", "F-Simul"]:
-
-        if hasattr(self, 'OneWay_P_Table') and self.OneWay_P_Table is not None:
-            mask = self.OneWay_P_Table.iloc[:, 0] == A_method
-            self.OneWay_P_Table.loc[mask, "Parameter 1 Name"] = 'KDE: Kernel'
-            self.OneWay_P_Table.loc[mask, "Parameter 2 Name"] = 'KDE: BandWidth'
-
-            if hasattr(params[0], 'Kernel'):
-                self.OneWay_P_Table.loc[mask, "Parameter 1 Value"] = params[0].Kernel
-
-            if hasattr(params[0], 'Bandwidth'):
-                self.OneWay_P_Table.loc[mask, "Parameter 2 Value"] = params[0].Bandwidth
-
-    elif A_method in ["L2-Bootstrap", "F-Bootstrap"]:
-        if hasattr(self, 'OneWay_P_Table') and self.OneWay_P_Table is not None:
-            mask = self.OneWay_P_Table.iloc[:, 0] == A_method
-            self.OneWay_P_Table.loc[mask, "Parameter 1 Name"] = 'Bootstrap: Resamples'
-            self.OneWay_P_Table.loc[mask, "Parameter 2 Name"] = 'Bootstrap: Type'
-            self.OneWay_P_Table.loc[mask, "Parameter 1 Value"] = params[0]
-            self.OneWay_P_Table.loc[mask, "Parameter 2 Value"] = "nonparametric"
+    return  np.expand_dims(btstat, axis=1) 
 
 def generate_two_way_comb(self):
     combinations = []
@@ -243,7 +221,6 @@ def beta_hat(COV):
     """
     return np.trace(COV @ COV) / np.trace(COV)
 
-
 def kappa_hat(COV):
     """
     Compute kappa_hat from a covariance matrix.
@@ -259,7 +236,6 @@ def unbiased_estimator_trace_squared(n, k, COV):
     factor = np.trace(COV) ** 2 - (2 * np.trace(COV @ COV)) / (n - k + 1)
     return n_adj * factor
 
-
 def unbiased_estimator_trace_cov_squared(n, k, COV):
     """
     Unbiased estimator for trace(COV @ COV)
@@ -274,4 +250,37 @@ def beta_hat_unbias(n, k, COV):
 
 def kappa_hat_unbias(n, k, COV):
     return unbiased_estimator_trace_squared(n, k, COV) / unbiased_estimator_trace_cov_squared(n, k, COV)
-     
+
+def group_booter(data_matrix_cell, n_domain_points, k_groups, n_i, n):
+    eta_i_star = np.zeros((n_domain_points, k_groups))
+    build_covar_star = np.zeros((n_domain_points, 0))
+
+    for k in range(k_groups):
+        indices = np.random.choice(data_matrix_cell[k].shape[1], n_i[k], replace=True)
+        data_subset_boot = data_matrix_cell[k][:,indices]
+
+        eta_i_star[:,k] = np.mean(data_subset_boot, axis=1)
+
+        zero_mean_data_k_subset = data_subset_boot - eta_i_star[:,k].reshape(-1,1)
+        build_covar_star = np.hstack((build_covar_star, zero_mean_data_k_subset))
+
+    gamma_hat_star = (1 / (n-k_groups)) * (build_covar_star.T @ build_covar_star)
+    eta_grand_star = np.sum(eta_i_star * n_i, axis=1) / n
+
+    return eta_i_star, eta_grand_star, gamma_hat_star
+
+def update_family_table(df, method, params):
+    # Find the rows where the method matches
+    mask = df['Family-Wise Method'] == method
+
+    if method in {"L2-Simul", "F-Simul"}:
+        df.loc[mask, 'Parameter 1 Name'] = 'KDE: Kernel'
+        df.loc[mask, 'Parameter 2 Name'] = 'KDE: BandWidth'
+        df.loc[mask, 'Parameter 1 Value'] = 'Gaussian'
+        df.loc[mask, 'Parameter 2 Value'] = params[0].factor
+
+    elif method in {"L2-Bootstrap", "F-Bootstrap"}:
+        df.loc[mask, 'Parameter 1 Name'] = 'Bootstrap: Resamples'
+        df.loc[mask, 'Parameter 2 Name'] = 'Bootstrap: Type'
+        df.loc[mask, 'Parameter 1 Value'] = params[0]
+        df.loc[mask, 'Parameter 2 Value'] = 'nonparametric'
