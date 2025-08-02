@@ -7,7 +7,7 @@ from tqdm import tqdm
 from functionalANOVA.core import utils
 from functionalANOVA.core.methods.oneway import run_onewayBF
 
-# TODO: Needs work
+# TODO: Check Pairwise hypothesis
 def run_twoway(self, method, data, contrast):
 
     N = self.N
@@ -23,7 +23,13 @@ def run_twoway(self, method, data, contrast):
 
     q = len(bflag0)
     k = (p * q)
-
+    
+    Hp = 0
+    Hq = 0
+    Ap = 0
+    Aq = 0
+    u = v = None  # makes them always "defined"   
+    
     gsize = []
     vmu = []
     V = []
@@ -62,6 +68,7 @@ def run_twoway(self, method, data, contrast):
     V = np.array(V)
 
     if self.hypothesis not in ["PAIRWISE", "FAMILY"]:
+        # Define u and v based on weights
         if self.weights == "UNIFORM":
             u = np.ones(p) / p
             v = np.ones(q) / q
@@ -73,31 +80,46 @@ def run_twoway(self, method, data, contrast):
             u = np.sum(matsize, axis=1) / N_total
             v = np.sum(matsize, axis=0) / N_total
 
-        Hp = np.hstack([np.eye(p-1), - np.ones((p-1,1))])
-        Hq = np.hstack([np.eye(q-1), - np.ones((q-1,1))])
+        else:
+            raise ValueError(f"Unsupported weight type: {self.weights}")
+
+        # Define projection and centering matrices
+        Hp = np.hstack([np.eye(p - 1), -np.ones((p - 1, 1))])
+        Hq = np.hstack([np.eye(q - 1), -np.ones((q - 1, 1))])
 
         Ap = np.eye(p) - np.outer(np.ones(p), u)
         Aq = np.eye(q) - np.outer(np.ones(q), v)
 
-    if self.hypothesis in ["PAIRWISE", "FAMILY"]:
-        r = contrast.shape[0]
-    elif self.hypothesis == "INTERACTION":
-        contrast = np.kron(Hp, Hq) @ np.kron(Ap, Aq)
-        r = ((p-1) * (q-1))
+    # Handle hypothesis-specific contrast construction
+    match self.hypothesis:
+        case "PAIRWISE" | "FAMILY":
+            r = contrast.shape[0]
 
-    elif self.hypothesis == "PRIMARY":
-        contrast = Hp @ np.kron(Ap, v.reshape(-1,1))
-        r = p - 1
-    elif self.hypothesis == "SECONDARY":
-        contrast = Hq @ np.kron(u.reshape(1,-1), Aq)
-        r = q - 1
+        case "INTERACTION":
+            contrast = np.kron(Hp, Hq) @ np.kron(Ap, Aq)
+            r = (p - 1) * (q - 1)
 
-    else:
-        if self.Contrast_Factor ==1:
-            contrast = contrast @ np.kron(Ap, v.reshape(1,-1))
-        elif self.Contrast_Factor == 2:
-            contrast = contrast @ np.kron(u.reshape(1,-1),Aq)
-        r = contrast.shape[0]
+        case "PRIMARY":
+            assert v is not None, "v must be defined before using reshape"
+            contrast = Hp @ np.kron(Ap, v.reshape(-1, 1))
+            r = p - 1
+
+        case "SECONDARY":
+            assert u is not None, "v must be defined before using reshape"
+            contrast = Hq @ np.kron(u.reshape(1, -1), Aq)
+            r = q - 1
+
+        case "CUSTOM" | _:
+            if self._groups.contrast_facto == 1:
+                assert v is not None, "v must be defined before using reshape"
+                contrast = contrast @ np.kron(Ap, v.reshape(1, -1))
+            elif self._groups.contrast_facto == 2:
+                assert u is not None, "v must be defined before using reshape"
+                contrast = contrast @ np.kron(u.reshape(1, -1), Aq)
+            else:
+                raise ValueError("Invalid contrast_facto: must be 1 or 2")
+
+            r = contrast.shape[0]
 
 
     W = inv(contrast @ np.diag(1/gsize) @ contrast.T)
@@ -173,10 +195,9 @@ def run_twoway(self, method, data, contrast):
         case "L2-Bootstrap":
                 stat = SSH0
                 Bstat = np.zeros(self.n_boot)
-                
+                W = inv(contrast @ np.diag(1/gsize) @ contrast.T)
+                Bmu = np.empty((p * q, yy.shape[1]))
                 for b in tqdm(range(self.n_boot), desc=self._setup_time_bar(method)):
-                    Bmu = []
-                    V_boot = []
                     counter = 0
 
                     for i in range(p):
@@ -188,13 +209,13 @@ def run_twoway(self, method, data, contrast):
 
                             Byi = yi[Bootflag,:]
                             Bmui = np.mean(Byi, axis=0)
-                            Bmu.append(Bmui)
-
+                            Bmu[counter] = Bmui
                             counter += 1
 
-                    Bmu = np.array(Bmu)
-                    W = inv(contrast @ np.diag(1/gsize) @ contrast.T)
-                    SSH = np.diag(((Bmu - vmu).T @ contrast.T) @ W @ (contrast @ (Bmu - vmu)))
+                    diff = Bmu - vmu
+                    proj = contrast @ diff
+                    SSH = np.einsum('ij,ij->j', proj.T @ W, proj.T)
+                    #  SSH = np.diag(((Bmu - vmu).T @ contrast.T) @ W @ (contrast @ (Bmu - vmu)))
                     Bstat[b] = np.sum(SSH)
 
                 pvalue = np.mean(Bstat>stat)
@@ -203,9 +224,12 @@ def run_twoway(self, method, data, contrast):
             stat = SSH0 / SSE0 * (N-k) / r
             ratio = (N-k)/r
             Bstat = np.zeros(self.n_boot)
+            W = np.linalg.inv(contrast @ np.diag(1 / gsize) @ contrast.T)
+            ratio = (N - k) / r
+            Bstat = np.zeros(self.n_boot)
+            Bmu = np.empty((p * q, yy.shape[1]))
 
             for b in tqdm(range(self.n_boot), desc=self._setup_time_bar(method)):
-                Bmu = []
                 V = []
                 counter = 0
 
@@ -214,23 +238,21 @@ def run_twoway(self, method, data, contrast):
                         ijflag = (aflag == aflag0[i]) & (bflag == bflag0[j])
                         ni = n_ii[counter]
 
-                        yi = yy[ijflag,:]
-
-                        Bootflag=np.random.choice(ni, ni, replace=True)
-                        Byi = yi[Bootflag,:]
+                        yi = yy[ijflag, :]
+                        Bootflag = np.random.randint(0, ni, size=ni)
+                        Byi = yi[Bootflag, :]
                         Bmui = np.mean(Byi, axis=0)
-                        Bmu.append(Bmui)
+                        Bmu[counter] = Bmui
 
-                        V.extend(Byi - Bmui)
+                        V.append(Byi - Bmui)  # list of residuals
 
                         counter += 1
 
-                Bmu = np.array(Bmu)
-                V = np.array(V)
-
-                W = inv(contrast @ np.diag(1/gsize) @ contrast.T)
-                SSH = np.diag(((Bmu - vmu).T @ contrast.T) @ W @ (contrast @ (Bmu - vmu)))
-                SSE = np.diag(V.T @ V)
+                V = np.vstack(V)  # concatenate only once
+                diff = Bmu - vmu
+                proj = contrast @ diff
+                SSH = np.einsum('ij,ij->j', proj.T @ W, proj.T)
+                SSE = np.sum(V ** 2, axis=0)  # faster than np.diag(V.T @ V)
 
                 Bstat[b] = np.sum(SSH) / np.sum(SSE) * ratio
 
@@ -251,7 +273,7 @@ def run_twowayBF(self, method, data, contrast, c):
 
     bflag0 = np.unique(bflag)
     q = len(bflag0)
-
+    u = v = None  # makes them always "defined"   
 
     gsize = np.zeros((p,q))
     yy = []
@@ -306,9 +328,11 @@ def run_twowayBF(self, method, data, contrast, c):
     if self.hypothesis == "INTERACTION":
         contrast_final = H @ np.kron(Ap, Aq)
     elif self.hypothesis == "PRIMARY":
-        contrast_final = H @ np.kron(Ap, v.reshape(1, -1))
+         assert v is not None, "v must be defined before using reshape"
+         contrast_final = H @ np.kron(Ap, v.reshape(1, -1))
     elif self.hypothesis == "SECONDARY":
-        contrast_final = H @ np.kron(u.reshape(1, -1), Aq)
+         assert u is not None, "v must be defined before using reshape"
+         contrast_final = H @ np.kron(u.reshape(1, -1), Aq)
     else:
         contrast_final = contrast
 

@@ -425,36 +425,36 @@ def run_onewayBF(self, method, data, contrast, c, indicator_a=None):
         
         if method == "F-Bootstrap":
             Bstat = np.zeros(self.n_boot)
-
+            is_matrix_contrast = contrast.ndim == 2
             for ii in tqdm(range(self.n_boot), desc=self._setup_time_bar(method)):
-                Bmu = np.empty((0, p))
+                Bmu = np.empty((k, p))
                 tr_gamma = []
-
+                T_n = 0
                 for i in range(k):
                     iflag = (aflag == aflag0[i])
                     yi = yy[iflag, :]
                     ni = int(gsize[i])
 
-                    Bflag = np.random.choice(ni, ni, replace=True)
+                    Bflag = np.random.randint(0, ni, size=ni)
                     Byi = yi[Bflag, :]
 
                     Bmui = np.mean(Byi, axis=0)
-                    Bmu = np.vstack([Bmu, Bmui])
+                    Bmu[i] = Bmui
 
                     if mask[i]:
                         # stats for ith group in k
                         z_mean = Byi - Bmui
-                        test_cov = (z_mean @ z_mean.T) / (ni - 1)
-                        tr_gamma_i = np.trace(test_cov)
-
+                        tr_gamma_i = np.sum(z_mean ** 2) / (ni - 1)
                         tr_gamma.append(tr_gamma_i)
 
-                if contrast.ndim == 2:
-                    temp = H @ contrast @ (Bmu - vmu)
-                    T_n = np.trace(temp @ temp.T)
-                else:
-                    temp = np.multiply(H, contrast) @ (Bmu - vmu)
-                    T_n = temp.reshape(1, -1) @ temp.reshape(-1, 1)
+                    diff = Bmu - vmu
+
+                    if is_matrix_contrast:
+                        temp = H @ contrast @ diff
+                        T_n = np.sum(temp ** 2)  # faster than trace(temp @ temp.T)
+                    else:
+                        temp = np.multiply(H, contrast) @ diff
+                        T_n = float(temp @ temp.T)
 
                 S_n = np.sum(A_n_ii * tr_gamma)
                 temp = T_n / S_n
@@ -538,29 +538,29 @@ def run_onewayBF(self, method, data, contrast, c, indicator_a=None):
         pvalue = pstat[1]
 
     elif method == "L2-Bootstrap":
-        Bstat = np.zeros(self.n_boot)
+        Bstat = np.empty(self.n_boot)
+        contrast_is_matrix = contrast.ndim == 2
 
         for ii in tqdm(range(self.n_boot), desc=self._setup_time_bar(method)):
+            Bmu = np.empty((k, p))
 
-            Bmu = np.empty((0, p))
             for i in range(k):
                 iflag = (aflag == aflag0[i])
                 yi = yy[iflag, :]
                 ni = int(gsize[i])
 
-                Bflag = np.random.choice(ni, ni, replace=True)
+                Bflag = np.random.randint(0, ni, size=ni)
                 Byi = yi[Bflag, :]
-                Bmui = np.mean(Byi, axis=0)
-                Bmu = np.vstack([Bmu, Bmui])
+                Bmu[i] = np.mean(Byi, axis=0)
 
-            if contrast.ndim == 2:
-                temp = H @ contrast @ (Bmu - vmu)
-                temp = np.trace(temp @ temp.T)
+            diff = Bmu - vmu
+
+            if contrast_is_matrix:
+                temp = H @ contrast @ diff
+                Bstat[ii] = np.sum(temp**2)  # same as trace(temp @ temp.T)
             else:
-                temp = np.multiply(H, contrast) @ (Bmu - vmu)
-                temp = temp.reshape(1, -1) @ temp.reshape(-1, 1)
-                
-            Bstat[ii] = temp
+                temp = np.multiply(H, contrast) @ diff
+                Bstat[ii] = float(temp @ temp.T)  # scalar dot product
 
 
         pvalue = np.mean(Bstat > stat0)
