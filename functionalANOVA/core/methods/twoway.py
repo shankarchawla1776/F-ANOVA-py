@@ -3,6 +3,7 @@ from scipy import stats
 from scipy.stats import chi2, f
 from scipy.linalg import inv
 import pandas as pd
+from tqdm import tqdm
 from functionalANOVA.core import utils
 from functionalANOVA.core.methods.oneway import run_onewayBF
 
@@ -11,14 +12,14 @@ def run_twoway(self, method, data, contrast):
 
     N = self.N
     ddim = self.n_domain_points
-    aflag = aflag_maker(self.n_i)
-    bflag = self.SubgroupIndicator
+    aflag = utils.aflag_maker(self.n_i)
+    bflag = self._groups.subgroup_indicator
     aflag0 = np.unique(aflag)
     p = len(aflag0)
 
     yy = data
 
-    bflag0 = np.unique(self.SubgroupIndicator)
+    bflag0 = np.unique(bflag)
 
     q = len(bflag0)
     k = (p * q)
@@ -36,7 +37,7 @@ def run_twoway(self, method, data, contrast):
             ni = np.sum(ijflag)
 
             if ni == 0:
-                error_string.append(f"A missing combination of data occurs for Primary Label {self.PrimaryLabels[i]} and Secondary Label {self.SecondaryLabels[j]}")
+                error_string.append(f"A missing combination of data occurs for Primary Label {self._labes.primary[i]} and Secondary Label {self._labes.secondary[j]}")
 
             gsize.append(ni)
             yyi = yy[ijflag, :]
@@ -60,12 +61,12 @@ def run_twoway(self, method, data, contrast):
     vmu = np.array(vmu)
     V = np.array(V)
 
-    if self.Hypothesis not in ["PAIRWISE", "FAMILY"]:
-        if self.Weights == "UNIFORM":
+    if self.hypothesis not in ["PAIRWISE", "FAMILY"]:
+        if self.weights == "UNIFORM":
             u = np.ones(p) / p
             v = np.ones(q) / q
 
-        elif self.Weights == "PROPORTIONAL":
+        elif self.weights == "PROPORTIONAL":
             matsize = np.array(p_cell)
             N_total = np.sum(gsize)
 
@@ -78,16 +79,16 @@ def run_twoway(self, method, data, contrast):
         Ap = np.eye(p) - np.outer(np.ones(p), u)
         Aq = np.eye(q) - np.outer(np.ones(q), v)
 
-    if self.Hypothesis in ["PAIRWISE", "FAMILY"]:
+    if self.hypothesis in ["PAIRWISE", "FAMILY"]:
         r = contrast.shape[0]
-    elif self.Hypothesis == "INTERACTION":
+    elif self.hypothesis == "INTERACTION":
         contrast = np.kron(Hp, Hq) @ np.kron(Ap, Aq)
         r = ((p-1) * (q-1))
 
-    elif self.Hypothesis == "PRIMARY":
+    elif self.hypothesis == "PRIMARY":
         contrast = Hp @ np.kron(Ap, v.reshape(-1,1))
         r = p - 1
-    elif self.Hypothesis == "SECONDARY":
+    elif self.hypothesis == "SECONDARY":
         contrast = Hq @ np.kron(u.reshape(1,-1), Aq)
         r = q - 1
 
@@ -115,6 +116,9 @@ def run_twoway(self, method, data, contrast):
 
     A = np.trace(Pooled_COVAR)
     B = np.trace(Pooled_COVAR @ Pooled_COVAR)
+    
+    A2 = 0
+    B2 = 0
 
     if "Naive" in method:
         A2 = A**2
@@ -125,135 +129,112 @@ def run_twoway(self, method, data, contrast):
         # just used pool_coef instead of N-k explicitly
         A2 = (pool_coeff) * (pool_coeff+1) / (pool_coeff-1) / (pool_coeff+2) * (A**2-2*B/(pool_coeff+1))
         B2 = (pool_coeff)**2 / (pool_coeff-1)/(pool_coeff+2) * (B-A**2/(pool_coeff))
+        
 
-    if method == "L2-Simul":
-        stat = SSH0
-        eig_gamma_hat = np.linalg.eigvals(Pooled_COVAR)
-        eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
+    pvalue = np.nan
+    stat = np.nan
+    match method: 
+        case "L2-Simul":
+            stat = SSH0
+            eig_gamma_hat = np.linalg.eigvalsh(Pooled_COVAR)
+            eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
-        SSH_null = chi_sq_mixture(r, eig_gamma_hat, self.n_simul)
-        SSH_NullFitted = stats.gaussian_kde(SSH_null)
-        pvalue = 1 - SSH_NullFitted.integrate_box_1d(-np.inf, stat)
-        pvalue = max(0,min(1,pvalue))
-        pstat = [stat, pvalue]
+            SSH_null = utils.chi_sq_mixture(r, eig_gamma_hat, self.n_simul)
+            SSH_NullFitted = stats.gaussian_kde(SSH_null)
+            pvalue = 1 - SSH_NullFitted.integrate_box_1d(-np.inf, stat)
+            pvalue = max(0,min(1,pvalue))
 
-    elif method in ["L2-Naive", "L2-BiasReduced"]:
-        stat = SSH0
-        beta = B2/A
-        kappa = A2/B2
-        pvalue = 1 - chi2.cdf(stat/beta, r * kappa)
-        pstat = [stat/beta, pvalue]
+        case "L2-Naive" | "L2-BiasReduced":
+            stat = SSH0
+            beta = B2/A
+            kappa = A2/B2
+            pvalue = 1 - chi2.cdf(stat/beta, r * kappa)
 
-    elif method in ["F-Naive", "F-BiasReduced"]:
-        stat = SSH0 / SSE0 * (N-k) / r
-        kappa = A2/B2
-        pvalue = 1 - f.cdf(stat, r * kappa, (N-k) * kappa)
-        pstat = [stat, pvalue]
+        case "F-Naive" | "F-BiasReduced":
+            stat = SSH0 / SSE0 * (N-k) / r
+            kappa = A2/B2
+            pvalue = 1 - f.cdf(stat, r * kappa, (N-k) * kappa)
 
-    elif method == "F-Simul":
-        stat = SSH0 / SSE0 * (N-k) / r
-        eig_gamma_hat = np.linalg.eigvals(Pooled_COVAR)
-        eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
+        case "F-Simul":
+            stat = SSH0 / SSE0 * (N-k) / r
+            eig_gamma_hat = np.linalg.eigvalsh(Pooled_COVAR)
+            eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
 
-        SSH_null = chi_sq_mixture(r, eig_gamma_hat, self.n_simul)
-        SSE_null = chi_sq_mixture(N-k, eig_gamma_hat, self.n_simul)
+            SSH_null = utils.chi_sq_mixture(r, eig_gamma_hat, self.n_simul)
+            SSE_null = utils.chi_sq_mixture(N-k, eig_gamma_hat, self.n_simul)
 
-        ratio = (N-k) / r
+            ratio = (N-k) / r
 
-        F_null = SSH_null / SSE_null * ratio
-        F_NullFitted = stats.gaussian_kde(F_null)
-        pvalue = 1 - F_NullFitted.integrate_box_1d(-np.inf, stat)
-        pvalue = max(0,min(1,pvalue))
-        pstat = [stat, pvalue]
+            F_null = SSH_null / SSE_null * ratio
+            F_NullFitted = stats.gaussian_kde(F_null)
+            pvalue = 1 - F_NullFitted.integrate_box_1d(-np.inf, stat)
+            pvalue = max(0,min(1,pvalue))
 
-    elif method == "L2-Bootstrap":
-        stat = SSH0
-        Bstat = np.zeros(self.n_boot)
+        case "L2-Bootstrap":
+                stat = SSH0
+                Bstat = np.zeros(self.n_boot)
+                
+                for b in tqdm(range(self.n_boot), desc=self._setup_time_bar(method)):
+                    Bmu = []
+                    V_boot = []
+                    counter = 0
 
+                    for i in range(p):
+                        for j in range(q):
+                            ijflag = (aflag==aflag0[i]) & (bflag == bflag0[j])
+                            ni = n_ii[counter]
+                            yi = yy[ijflag,:]
+                            Bootflag = np.random.choice(ni,ni,replace=True)
 
-        # ts = self.set_up_time_bar(method)
-        ts = TimeBar(self.n_boot, method)
+                            Byi = yi[Bootflag,:]
+                            Bmui = np.mean(Byi, axis=0)
+                            Bmu.append(Bmui)
 
-        for b in range(self.n_boot):
-            Bmu = []
-            V_boot = []
-            counter = 0
+                            counter += 1
 
-            for i in range(p):
-                for j in range(q):
-                    ijflag = (aflag==aflag0[i]) & (bflag == bflag0[j])
-                    ni = n_ii[counter]
-                    yi = yy[ijflag,:]
-                    Bootflag = np.random.choice(ni,ni,replace=True)
+                    Bmu = np.array(Bmu)
+                    W = inv(contrast @ np.diag(1/gsize) @ contrast.T)
+                    SSH = np.diag(((Bmu - vmu).T @ contrast.T) @ W @ (contrast @ (Bmu - vmu)))
+                    Bstat[b] = np.sum(SSH)
 
-                    Byi = yi[Bootflag,:]
-                    Bmui = np.mean(Byi, axis=0)
-                    Bmu.append(Bmui)
+                pvalue = np.mean(Bstat>stat)
 
-                    counter += 1
+        case "F-Bootstrap":
+            stat = SSH0 / SSE0 * (N-k) / r
+            ratio = (N-k)/r
+            Bstat = np.zeros(self.n_boot)
 
-            Bmu = np.array(Bmu)
-            W = inv(contrast @ np.diag(1/gsize) @ contrast.T)
-            SSH = np.diag(((Bmu - vmu) @ contrast.T).T @ W @ (contrast @ (Bmu - vmu).T))
-            Bstat[b] = np.sum(SSH)
-            ts.progress()
+            for b in tqdm(range(self.n_boot), desc=self._setup_time_bar(method)):
+                Bmu = []
+                V = []
+                counter = 0
 
-        ts.stop()
-        ts.delete()
+                for i in range(p):
+                    for j in range(q):
+                        ijflag = (aflag == aflag0[i]) & (bflag == bflag0[j])
+                        ni = n_ii[counter]
 
-        pvalue = np.mean(Bstat>stat)
-        pstat = [stat, pvalue]
+                        yi = yy[ijflag,:]
 
+                        Bootflag=np.random.choice(ni, ni, replace=True)
+                        Byi = yi[Bootflag,:]
+                        Bmui = np.mean(Byi, axis=0)
+                        Bmu.append(Bmui)
 
-    elif method == "F-Bootstrap":
-        stat = SSH0 / SSE0 * (N-k) / r
-        # ts = self.set_up_time_bar(method)
-        ts = TimeBar(self.n_boot, method)
-        ratio = (N-k)/r
-        Bstat = np.zeros(self.n_boot)
+                        V.extend(Byi - Bmui)
 
-        for b in range(self.n_boot):
-            Bmu = []
-            V = []
-            counter = 0
+                        counter += 1
 
-            for i in range(p):
-                for j in range(q):
-                    ijflag = (aflag == aflag0[i]) & (bflag == bflag0[j])
-                    ni = n_ii[counter]
+                Bmu = np.array(Bmu)
+                V = np.array(V)
 
-                    yi = yy[ijflag,:]
+                W = inv(contrast @ np.diag(1/gsize) @ contrast.T)
+                SSH = np.diag(((Bmu - vmu).T @ contrast.T) @ W @ (contrast @ (Bmu - vmu)))
+                SSE = np.diag(V.T @ V)
 
-                    Bootflag=np.random.choice(ni, ni, replace=True)
-                    Byi = yi[Bootflag,:]
-                    Bmui = np.mean(Byi, axis=0)
-                    Bmu.append(Bmui)
+                Bstat[b] = np.sum(SSH) / np.sum(SSE) * ratio
 
-                    V.extend(Byi - Bmui)
-
-                    counter += 1
-
-            Bmu = np.array(Bmu)
-            V = np.array(V)
-
-            W = inv(contrast @ np.diag(1/gsize) @ contrast.T)
-            SSH = np.diag(((Bmu - vmu) @ contrast.T).T @ W @ (contrast @ (Bmu-vmu).T))
-            SSE = np.diag(V.T @ V)
-
-            Bstat[b] = np.sum(SSH) / np.sum(SSE) * ratio
-            ts.progress()
-
-        ts.stop()
-        ts.delete()
-        pvalue = np.mean(Bstat > stat)
-        pstat = [stat, pvalue]
-
-    if len(pstat) > 1:
-        pvalue = pstat[1]
-    else:
-        pvalue = np.nan
-
-    stat = pstat[0]
+            pvalue = np.mean(Bstat > stat)
 
     return pvalue, stat
 

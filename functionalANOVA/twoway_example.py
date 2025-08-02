@@ -16,7 +16,7 @@ indicator_list = [matlab_data['IndicatorCell'][0,0], matlab_data['IndicatorCell'
 bounds = (-np.inf, np.inf)
 
 myANOVA = functionalANOVA(data_list=groups, d_grid=time, grid_bounds=bounds, subgroup_indicator=indicator_list)
-
+myANOVA.twoway(n_boot=1000)
 # TODO 
 # myANOVA.plot_means()
 # myANOVA.plot_covariances()

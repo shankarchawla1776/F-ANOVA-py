@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from typing import Tuple, Optional, List, Union, Any, ClassVar, cast, Sequence
+from typing import Tuple, Optional, List, Union, Any, ClassVar, cast, Sequence, Literal
 from dataclasses import dataclass, field
 import warnings
 from functionalANOVA.core import utils
@@ -242,7 +242,7 @@ class functionalANOVA():
                   alpha: float = 0.05,
                   methods: Optional[Sequence[str]] = None,
                   hypothesis: Optional[Sequence[str]] = None):
-        # Still need to add args of GroupLabels and showSimulPlot
+        # TODO: need to add args of GroupLabels and showSimulPlot arguments
 
         #Sometype of checking for inputs above
         self._validate_stat_inputs(alpha, n_boot, n_simul, methods, hypothesis)
@@ -301,8 +301,7 @@ class functionalANOVA():
                   methods: Optional[Sequence[str]] = None,
                   hypothesis: Optional[Sequence[str]] = None):
 
-        # Still need to add args of GroupLabels
-
+        # TODO:  need to add args of GroupLabels and showSimulPlot arguments
         # Sometype of checking for inputs above
         self._validate_stat_inputs(alpha, n_boot, n_simul, methods, hypothesis)
 
@@ -378,10 +377,75 @@ class functionalANOVA():
 
         self._prep_tables('oneway_bf', p_value_matrix, T_hypothesis, test_stat)
 
-
         if self.verbose:
             self._data_summary_report_one_way(ANOVA_TYPE='heteroskedastic')
             self._show_table(self._tables.oneway_bf)
+
+    def twoway(
+        self,
+        n_boot: int = 10_000,
+        n_simul: int = 10_000,
+        alpha: float = 0.05,
+        methods: Optional[Sequence[str]] = None,
+        hypothesis: Optional[Sequence[str]] = None,
+        subgroup_indicator: Union[np.ndarray, List[np.ndarray], None] = None,
+        contrast: Optional[np.ndarray] = None,
+        primary_labels: Optional[Sequence[str]] = None,
+        secondary_labels: Optional[Sequence[str]] = None,
+        weights: Optional[Literal["proportional", "uniform"]] = None
+    ):
+        self._validate_stat_inputs(alpha, n_boot, n_simul, methods, hypothesis)
+        
+        #TODO: Verify twoway args: contrast, primary_labels, secondary_labels, weights
+        
+        if self._groups.subgroup_indicator is None:
+            raise ValueError('subgroup_indicator must be provided for twoway ANOVAs')
+        else:
+            self._setup_twoway()  # already validates subgroup_indicator
+            self._setup_twoway_h0()
+            
+        yy = np.vstack([arr.T for arr in self.data])    
+        
+        C, n_tests = self._compute_contrast_matrix()
+        C = np.asarray(C)
+        pair_vec = self._setup_twoway_labels_and_tables(C, n_tests, scedasticity='homoscedastic')
+        
+        T_hypothesis = pd.DataFrame({'Hypothesis': pair_vec})
+        n_methods = len(self._methods.anova_methods_used)
+        # Always initialize analysis state
+        p_value_matrix = np.full((n_tests, n_methods), np.nan)
+        test_stat = np.full((1, n_methods), np.nan)
+        counter = 0
+        statistic = 0
+        c = 0
+        
+        for counter, method in enumerate(self._methods.anova_methods_used):
+            p_values = np.zeros(n_tests)
+
+            for ii in range(n_tests):
+                match self.hypothesis:
+                    case "PAIRWISE":
+                        C_input = C[ii, :]
+                        self._labels.hypothesis = pair_vec[ii]
+
+                    case "INTERACTION" | "PRIMARY" | "SECONDARY" | "FAMILY":
+                        C_input = C
+
+                    case _:
+                        C_input = C  # for CUSTOM or any other hypothesis
+
+                # Run the TwoWay test
+                p_value, statistic = self._run_twoway(method, yy, C_input)
+                p_values[ii] = p_value
+
+            # Store results
+            p_value_matrix[:, counter] = p_values
+            test_stat[0, counter] = statistic
+
+        self._prep_tables('twoway', p_value_matrix, T_hypothesis, test_stat)
+        if self.verbose:
+            self._data_summary_report_two_way(ANOVA_TYPE='homoskedastic')
+            self._show_table(self._tables.twoway)
 
     def _prep_tables(self, anova_method, p_value_matrix, T_hypothesis, test_stat):
         match anova_method:
@@ -427,7 +491,27 @@ class functionalANOVA():
                         self._tables.oneway_bf.loc[signif_results, "Verdict"] = ("Reject Null Hypothesis for Alternative Hypothesis")
                         self._tables.oneway_bf.loc[~signif_results, "Verdict"] = ("Fail to Reject Null Hypothesis")
             case 'twoway':
-                pass
+                    match self.hypothesis:
+                        case "PAIRWISE":
+                            # Create DataFrame of p-values
+                            T_p_value = pd.DataFrame(p_value_matrix, columns=self._methods.anova_methods_used)
+
+                            # Combine into full results table
+                            self._tables.twoway = pd.concat([T_hypothesis, T_p_value], axis=1)
+
+                        case "FAMILY":
+                            if not isinstance(self._tables.twoway, pd.DataFrame):
+                                raise ValueError('two_way should be a pandas dataframe')
+                            
+                            # Update columns
+                            self._tables.twoway["P-Value"] = p_value_matrix.T.flatten()
+                            self._tables.twoway["Test-Statistic"] = test_stat.T.flatten()
+
+                            # Add verdicts based on alpha
+                            significant = self._tables.twoway["P-Value"] < self.alpha
+                            self._tables.twoway.loc[significant, "Verdict"] = "Reject Null Hypothesis for Alternative Hypothesis"
+                            self._tables.twoway.loc[~significant, "Verdict"] = "Fail to Reject Null Hypothesis"
+
             case 'twoway_bf':
                 pass
 
@@ -777,6 +861,164 @@ class functionalANOVA():
         if self.labels.group:
             raise ValueError('TwoWay ANOVA requires using "primary_labels" and "secondary_labels" as input arguments.\nIt doesnt support the "group_labels" argument due to ambiguity.')
 
+    def _setup_twoway_h0(self):
+        """
+        Sets up Two-Way ANOVA for custom hypothesis testing using a contrast vector.
+        """
+
+        if self.hypothesis == "CUSTOM":
+            assert self._groups.contrast is not None and len(self._groups.contrast) > 0, \
+                "A user-specified Hypothesis requires a non-empty Contrast vector."
+            assert np.isclose(np.sum(self._groups.contrast), 0), \
+                "Contrast vector must sum to zero."
+
+            contrast_len = len(self._groups.contrast)
+
+            if self._groups.A == self._groups.B:
+                assert contrast_len == self._groups.A, \
+                    f"Size of Contrast Vector={contrast_len} doesn't match number of levels: n={self._groups.A}"
+
+                # Prompt user for which factor to apply contrast to
+                import tkinter as tk
+                from tkinter import messagebox, simpledialog
+
+                root = tk.Tk()
+                root.withdraw()  # Hide the main window
+
+                factor_choice = simpledialog.askstring(
+                    "Factor Selector", "Apply contrast to which factor? [Primary/Secondary]"
+                )
+
+                if factor_choice is None:
+                    raise SystemExit("No selection made.")
+
+                factor_choice = factor_choice.strip().lower()
+                if factor_choice == "primary":
+                    assert contrast_len == self._groups.A, \
+                        f"Contrast Vector length={contrast_len} does not match Primary factor levels={self._groups.A}"
+                    print("Contrast Vector applied to Primary Factor")
+                    self._groups.contrast_factor = 1
+
+                elif factor_choice == "secondary":
+                    assert contrast_len == self._groups.B, \
+                        f"Contrast Vector length={contrast_len} does not match Secondary factor levels={self._groups.B}"
+                    print("Contrast Vector applied to Secondary Factor")
+                    self._groups.contrast_factor = 2
+
+                else:
+                    raise ValueError("Invalid selection. Choose 'Primary' or 'Secondary'.")
+
+            else:
+                if contrast_len == self._groups.A:
+                    print("Contrast Vector applied to Primary Factor")
+                    self._groups.contrast_factor = 1
+
+                elif contrast_len == self._groups.B:
+                    print("Contrast Vector applied to Secondary Factor")
+                    self._groups.contrast_factor = 2
+
+                else:
+                    raise ValueError(
+                        f"Contrast Vector length={contrast_len} does not match the number of levels in either "
+                        f"Primary={self._groups.A} or Secondary={self._groups.B} Factors."
+                    )
+        elif self._groups.contrast is not None:
+            print("Warning: Ignoring Contrast Vector. Contrast Vector only used when Hypothesis='CUSTOM'.")
+
+    def _setup_twoway_labels_and_tables(self, C: np.ndarray, n_tests: int, scedasticity: str):
+        """
+        Sets up hypothesis labels and result tables for Two-Way ANOVA.
+
+        Parameters:
+        - C: contrast matrix (for PAIRWISE or CUSTOM)
+        - n_tests: number of hypothesis tests
+        - scedasticity: 'homoscedastic' or 'heteroscedastic'
+        """
+        pair_vec = []
+        scedasticity = scedasticity.lower().strip()
+        use_bf_table = scedasticity == "heteroscedastic"
+        n_methods = len(self._methods.anova_methods_used)
+        method_col = self._methods.anova_methods_used
+
+        if self.hypothesis == "FAMILY":
+            self.hypothesis_LABEL = ""
+
+            table = pd.DataFrame({
+                "Family-Wise Method": method_col,
+                "Test-Statistic": [np.nan] * n_methods,
+                "P-Value": [np.nan] * n_methods,
+                "Verdict": [""] * n_methods
+            })
+
+            if use_bf_table:
+                self._tables.twoway_bf = table
+            else:
+                self._tables.twoway = table
+
+        elif self.hypothesis == "PAIRWISE":
+            all_labels = self.generate_two_way_combinations()
+
+            for cc in range(n_tests):
+                indices = C[cc, :].astype(bool)
+                try:
+                    t1, t2 = all_labels[indices]
+                except ValueError:
+                    raise ValueError(f"Could not find 2 labels for contrast row {cc}: {C[cc, :]}")
+                pair_vec.append(f"{t1} & {t2}")
+
+            self.hypothesis_LABEL = np.array(pair_vec)
+
+        elif self.hypothesis in {"INTERACTION", "PRIMARY", "SECONDARY"}:
+            label = self.hypothesis.capitalize()
+            self.hypothesis_LABEL = label
+
+            table = pd.DataFrame({
+                f"{label} Effect": method_col,
+                "Test-Statistic": [np.nan] * n_methods,
+                "P-Value": [np.nan] * n_methods,
+                "Verdict": [""] * n_methods
+            })
+
+            if use_bf_table:
+                self._tables.twoway_bf = table
+            else:
+                self._tables.twoway = table
+
+        else:  # CUSTOM Hypothesis
+            contrast = self._groups.contrast
+
+            if self._groups.contrast_factor == 1:
+                group1 = "+".join(
+                    label for label, val in zip(self._labels.primary, contrast) if val >= 1
+                )
+                group2 = "+".join(
+                    label for label, val in zip(self._labels.primary, contrast) if val <= -1
+                )
+            elif self._groups.contrast_factor == 2:
+                group1 = "+".join(
+                    label for label, val in zip(self._labels.secondary, contrast) if val >= 1
+                )
+                group2 = "+".join(
+                    label for label, val in zip(self._labels.secondary, contrast) if val <= -1
+                )
+            else:
+                raise ValueError("contrast_factor must be 1 or 2 for CUSTOM hypothesis.")
+
+            self.hypothesis_LABEL = f"{group1} vs. {group2}"
+            table = pd.DataFrame({
+                f"{self.hypothesis_LABEL} Effect": method_col,
+                "Test-Statistic": [np.nan] * n_methods,
+                "P-Value": [np.nan] * n_methods,
+                "Verdict": [""] * n_methods
+            })
+
+            if use_bf_table:
+                self._tables.twoway_bf = table
+            else:
+                self._tables.twoway = table
+                
+        return pair_vec
+
     def _setup_time_bar(self, method):
         match method:
             case "L2-Bootstrap":
@@ -897,6 +1139,32 @@ class functionalANOVA():
 
         return HypothesisInfo(SSH_t, pair_vec, q, n_tests, C, D)
 
+    def _compute_contrast_matrix(self):
+        """
+        Define the contrast matrix `C` and number of tests `n_tests`
+        using pattern matching on `self.Hypothesis`.
+        """
+        match self.hypothesis:
+            case "PAIRWISE":
+                C = utils.construct_pairwise_contrast_matrix(self._groups.AB)
+                n_tests = C.shape[0]  # AB_groups choose 2
+
+            case "FAMILY":
+                n_tests = 1
+                C = np.hstack([
+                    np.eye(self._groups.AB - 1),
+                    -np.ones((self._groups.AB - 1, 1))
+                ])
+
+            case "INTERACTION" | "PRIMARY" | "SECONDARY":
+                n_tests = 1
+                C = None  # or np.array([]) if needed
+
+            case _:  # Default or "CUSTOM"
+                n_tests = 1
+                C = self._groups.contrast
+
+        return C, n_tests
     @staticmethod
     def _cast_to_1D(arr):
         arr = np.asarray(arr)
