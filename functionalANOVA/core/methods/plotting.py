@@ -639,8 +639,12 @@ def plot_test_stats(p_value, alpha, null_dist, test_stat, test_name, hypothesis,
 
     crit_value = np.quantile(null_dist, 1 - alpha)
 
-    ax.axvspan(crit_value, ax.get_xlim()[1], color='red', alpha=0.3,
+    x_max = max(np.max(null_dist), test_stat) * 1.2  # ensure room for shading
+    ax.set_xlim(right=x_max)
+
+    ax.axvspan(crit_value, x_max, color='red', alpha=0.3,
             label='Region for Statistical Significance (Reject H₀)')
+
 
     ax.axvline(crit_value, color='black', linestyle='-', linewidth=1.5, label='Beginning of Critical Value Region')
 
