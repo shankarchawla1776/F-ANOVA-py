@@ -166,14 +166,14 @@ class functionalANOVA():
         for k in range(self._groups.k):
             self.data.append(data_list[k][self.lb_index : self.ub_index + 1, :]) # exclusive at the upper bound
 
-        if not self._groups.subgroup_indicator: # One Way ANOVA set up
+        if self._groups.subgroup_indicator is None: # One Way ANOVA set up
             if  self._labels.group:
                 assert len(self._labels.group) == self._groups.k, "Each Group Must Have Exactly One Label Associated to it"
                 self._labels.generic_group = False
             else:
                 self._labels.group = [f"{i+1}" for i in range(self._groups.k)] #Automatically Assign Group Labels
                 self._labels.generic_group = True
-        else:
+        else:  # Two Way ANOVA set up
             self._setup_twoway()  # Creates Indicator Matrices and default Labels
             self._n_ii_generator()  # Creates Secondary Size Array
 
