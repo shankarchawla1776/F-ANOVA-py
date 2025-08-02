@@ -27,41 +27,41 @@ def plot_means(self, plot_type='default', subgroup_indicator=None, observation_s
         ]
 
     if subgroup_indicator is not None:
-        self.subgroup_indicator = subgroup_indicator
+        self._groups.subgroup_indicator = subgroup_indicator
     if group_labels is not None:
-        self.group_labels = group_labels
+        self._labels.group = group_labels
     if primary_labels is not None:
-        self.primary_labels = primary_labels
+        self._labels.primary = primary_labels
     if secondary_labels is not None:
-        self.secondary_labels = secondary_labels
+        self._labels.secondary = secondary_labels
     if domain_units_label:
-        self.domain_units_label = domain_units_label
+        self._units.domain = domain_units_label
     if response_units_label:
-        self.response_units_label = response_units_label
+        self._units.response = response_units_label
 
     plot_type = plot_type.upper()
 
-    domain_label = getattr(self, 'domain_label', '')
-    response_label = getattr(self, 'response_label', '')
+    domain_label = self._labels.domain or ''
+    response_label = self._labels.response or ''
 
-    if not hasattr(self, 'subgroup_indicator') or self.subgroup_indicator is None or len(self.subgroup_indicator) == 0:
+    if not self._groups.subgroup_indicator:
 
         assert plot_type == 'DEFAULT', 'TwoWay plotting options require a subgroup_indicator argument'
-        the_labels = self.group_labels
+        the_labels = self._labels.group
         n_labels = self.n_i
     else:
         set_up_two_way(self)
 
         if plot_type in ['DEFAULT', 'PRIMARY']:
             plot_type = 'PRIMARY'
-            the_labels = self.primary_labels
+            the_labels = self._labels.primary
             n_labels = self.n_i
 
         elif plot_type == "SECONDARY":
-            the_labels = self.secondary_labels
-            n_labels = np.zeros(self.B_groups)
-            for k in range(self.A_groups):
-                for kk in range(self.B_groups):
+            the_labels = self._labels.secondary
+            n_labels = np.zeros(self._groups.B)
+            for k in range(self._groups.A):
+                for kk in range(self._groups.B):
                     n_labels[kk] += self.n_ii[k][kk]
 
         elif plot_type == "INTERACTION":
@@ -69,7 +69,7 @@ def plot_means(self, plot_type='default', subgroup_indicator=None, observation_s
             n_labels = np.concatenate([item for sublist in self.n_ii for item in sublist])
 
     if observation_size_label:
-        if getattr(self, 'generic_group_labels', True):
+        if self._labels.generic_group:
             the_data_labels = [f": Group Data ({int(n)})" for n in n_labels]
         else:
             the_data_labels = [f": Data ({int(n)})" for n in n_labels]
@@ -97,27 +97,29 @@ def plot_means(self, plot_type='default', subgroup_indicator=None, observation_s
             title_labels_str = str(title_labels)
             save_labels = str(title_labels)
 
-    fig_width = position[2] / 100
-    fig_height = position[3] / 100
+    # fast patch for figure scale errors
+    fig_width = max(position[2] / 100, 8)
+    fig_height = max(position[3] / 100, 6)
+
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
     if plot_type == 'DEFAULT':
         mean_groups = [np.mean(data, axis=1) for data in self.data]
 
         if new_colors is None:
-            if self.k_groups < 7:
-                color_list = plt.cm.tab10(np.linspace(0, 1, self.k_groups))
+            if self._groups.k < 7:
+                color_list = plt.cm.tab10(np.linspace(0, 1, self._groups.k))
             else:
-                color_list = plt.cm.turbo(np.linspace(0, 1, self.k_groups))
+                color_list = plt.cm.turbo(np.linspace(0, 1, self._groups.k))
         else:
             assert new_colors.shape[1] == 3, 'Color order matrix must have 3 columns representing RGB values from 0 to 1'
-            assert new_colors.shape[0] >= self.k_groups, f'Color order matrix must have at least {self.k_groups} rows representing all the groups'
+            assert new_colors.shape[0] >= self._groups.k, f'Color order matrix must have at least {self._groups.k} rows representing all the groups'
             color_list = new_colors
 
         plot_reals = []
         legend_example_lines = []
 
-        for k in range(self.k_groups):
+        for k in range(self._groups.k):
             lines = ax.plot(self.d_grid, self.data[k], color=color_list[k], linewidth=data_line_width, alpha=data_transparency)
             plot_reals.append(lines)
 
@@ -126,7 +128,7 @@ def plot_means(self, plot_type='default', subgroup_indicator=None, observation_s
 
         plot_means = []
 
-        for k in range(self.k_groups):
+        for k in range(self._groups.k):
             line, = ax.plot(self.d_grid, mean_groups[k], color=color_list[k],
                           linewidth=mean_line_width, linestyle='--')
             plot_means.append(line)
@@ -141,17 +143,17 @@ def plot_means(self, plot_type='default', subgroup_indicator=None, observation_s
         mean_groups = [np.mean(data, axis=1) for data in self.data]
 
         if new_colors is None:
-            if self.k_groups < 7:
-                color_list = plt.cm.tab10(np.linspace(0, 1, self.k_groups))
+            if self._groups.k < 7:
+                color_list = plt.cm.tab10(np.linspace(0, 1, self._groups.k))
             else:
-                color_list = plt.cm.turbo(np.linspace(0, 1, self.k_groups))
+                color_list = plt.cm.turbo(np.linspace(0, 1, self._groups.k))
         else:
             color_list = new_colors
 
         plot_reals = []
         legend_example_lines = []
 
-        for k in range(self.k_groups):
+        for k in range(self._groups.k):
             lines = ax.plot(self.d_grid, self.data[k], color=color_list[k], linewidth=data_line_width, alpha=data_transparency)
             plot_reals.append(lines)
 
@@ -160,7 +162,7 @@ def plot_means(self, plot_type='default', subgroup_indicator=None, observation_s
 
         plot_means = []
 
-        for k in range(self.k_groups):
+        for k in range(self._groups.k):
             line, = ax.plot(self.d_grid, mean_groups[k], color=color_list[k], linewidth=mean_line_width, linestyle='--')
             plot_means.append(line)
 
@@ -175,7 +177,7 @@ def plot_means(self, plot_type='default', subgroup_indicator=None, observation_s
     elif plot_type == 'SECONDARY':
         yy = np.concatenate([data.T for data in self.data], axis=0)
 
-        bflag = self.subgroup_indicator
+        bflag = self._groups.subgroup_indicator
         bflag0 = np.unique(bflag)
         n_secondary = len(bflag0)
 
@@ -224,8 +226,8 @@ def plot_means(self, plot_type='default', subgroup_indicator=None, observation_s
     elif plot_type == 'INTERACTION':
         yy = np.concatenate([data.T for data in self.data], axis=0)
 
-        aflag = np.repeat(np.arange(1, self.A_groups + 1), self.n_i)
-        bflag = self.subgroup_indicator
+        aflag = np.repeat(np.arange(1, self._groups.A + 1), self.n_i)
+        bflag = self._groups.subgroup_indicator
         aflag0 = np.unique(aflag)
         bflag0 = np.unique(bflag)
         p, q = len(aflag0), len(bflag0)
@@ -284,21 +286,21 @@ def plot_means(self, plot_type='default', subgroup_indicator=None, observation_s
             lg.set_title(legend_title)
 
     if hasattr(self, 'echo_ensemble_recs') and self.echo_ensemble_recs is not None:
-        if self.domain_units_label:
-            ax.set_xlabel(f'{domain_label} ({self.domain_units_label})', fontsize=font_size)
+        if self._units.domain:
+            ax.set_xlabel(f'{domain_label} ({self._units.domain})', fontsize=font_size)
         else:
             ax.set_xlabel(domain_label, fontsize=font_size)
 
-        if self.response_units_label:
-            ax.set_ylabel(f'{response_label} ({self.response_units_label})', fontsize=font_size)
+        if self._units.response:
+            ax.set_ylabel(f'{response_label} ({self._units.response})', fontsize=font_size)
         else:
             ax.set_ylabel(response_label, fontsize=font_size)
     else:
-        if self.domain_units_label:
-            ax.set_xlabel(f'({self.domain_units_label})', fontsize=font_size)
+        if self._units.domain:
+            ax.set_xlabel(f'({self._units.domain})', fontsize=font_size)
 
-        if self.response_units_label:
-            ax.set_ylabel(f'({self.response_units_label})', fontsize=font_size)
+        if self._units.response:
+            ax.set_ylabel(f'({self._units.response})', fontsize=font_size)
 
     if (
         class_type.lower() == 'psdrecord'
@@ -397,29 +399,29 @@ def plot_covariances(self, plot_type='default', subgroup_indicator=None, group_l
         return m, n
 
     if subgroup_indicator is not None:
-        self.subgroup_indicator = subgroup_indicator
+        self._groups.subgroup_indicator = subgroup_indicator
     if group_labels is not None:
-        self.group_labels = group_labels
+        self._labels.group = group_labels
     if primary_labels is not None:
-        self.primary_labels = primary_labels
+        self._labels.primary = primary_labels
     if secondary_labels is not None:
-        self.secondary_labels = secondary_labels
+        self._labels.secondary = secondary_labels
     if domain_units_label:
-        self.domain_units_label = domain_units_label
+        self._units.domain = domain_units_label
     if response_units_label:
-        self.response_units_label = response_units_label
+        self._units.response = response_units_label
 
     plot_type = plot_type.upper()
     fig_label = 'Group'
     temp_label = ''
 
-    if not hasattr(self, 'subgroup_indicator') or self.subgroup_indicator is None or len(self.subgroup_indicator) == 0:
+    if not self._groups.subgroup_indicator:
         assert plot_type == 'DEFAULT', 'TwoWay plotting options require a subgroup_indicator argument'
 
-        if getattr(self, 'generic_group_labels', True):
-            display_label = [f"Group {i+1}" for i in range(self.k_groups)]
+        if self._labels.generic_group:
+            display_label = [f"Group {i+1}" for i in range(self._groups.k)]
         else:
-            display_label = self.group_labels
+            display_label = self._labels.group
     else:
         set_up_two_way(self)
 
@@ -428,14 +430,14 @@ def plot_covariances(self, plot_type='default', subgroup_indicator=None, group_l
             fig_label = 'Primary Factor'
             display_label = self.primary_labels
 
-            if getattr(self, 'generic_group_labels', True):
+            if self._labels.generic_group:
                 display_label = [f"Group {label}" for label in display_label]
 
         elif plot_type == 'SECONDARY':
             fig_label = 'Secondary Factor'
             display_label = self.secondary_labels
 
-            if getattr(self, 'generic_group_labels', True):
+            if self._labels.generic_group:
                 display_label = [f"Group {label}" for label in display_label]
 
         elif plot_type == 'INTERACTION':
@@ -459,19 +461,19 @@ def plot_covariances(self, plot_type='default', subgroup_indicator=None, group_l
             title_labels_str = ''
             save_labels = ''
 
-    if not self.response_units_label:
+    if not self._units.response:
         color_bar_label = '(Response)^2'
     else:
-        color_bar_label = f'({self.response_units_label})^2'
+        color_bar_label = f'({self._units.response})^2'
 
     if plot_type in ['DEFAULT', 'PRIMARY']:
-        gamma_hat_i, pooled_covar, n_ii = _make_covariances(self.data, self.k_groups, self.n_domain_points)
-        K = self.k_groups
+        gamma_hat_i, pooled_covar, n_ii = _make_covariances(self.data, self._groups.k, self.n_domain_points)
+        K = self._groups.k
 
     elif plot_type == 'SECONDARY':
         yy = np.concatenate([data.T for data in self.data], axis=0)
 
-        bflag = self.subgroup_indicator
+        bflag = self._groups.subgroup_indicator
         bflag0 = np.unique(bflag)
 
         n_secondary = len(bflag0)
@@ -486,15 +488,15 @@ def plot_covariances(self, plot_type='default', subgroup_indicator=None, group_l
 
     elif plot_type == 'INTERACTION':
         yy = np.concatenate([data.T for data in self.data], axis=0)
-        aflag = np.repeat(np.arange(1, self.A_groups + 1), self.n_i)
-        bflag = self.subgroup_indicator
+        aflag = np.repeat(np.arange(1, self._groups.A + 1), self.n_i)
+        bflag = self._groups.subgroup_indicator
 
         aflag0 = np.unique(aflag)
         bflag0 = np.unique(bflag)
 
         p, q = len(aflag0), len(bflag0)
         ab = p * q
-        self.AB_groups = ab
+        self._groups.AB = ab
         sub_data = []
         counter = 0
 
@@ -508,8 +510,8 @@ def plot_covariances(self, plot_type='default', subgroup_indicator=None, group_l
         gamma_hat_i, pooled_covar, n_ii = _make_covariances(sub_data, ab, self.n_domain_points)
         K = ab
 
-    fig_width = position[2] / 100
-    fig_height = position[3] / 100
+    fig_width = max(position[2] / 100, 8)  # minimum 8 inches
+    fig_height = max(position[3] / 100, 6)  # minimum 6 inches
 
     fig = plt.figure(figsize=(fig_width, fig_height))
     fig.canvas.manager.set_window_title(f'{fig_label} Covariances Visualized')
@@ -530,13 +532,13 @@ def plot_covariances(self, plot_type='default', subgroup_indicator=None, group_l
         ax.set_xticks(ax.get_yticks())
 
         if hasattr(self, 'echo_ensemble_recs') and self.echo_ensemble_recs is not None:
-            if not self.domain_units_label:
-                temp_label = getattr(self, 'domain_label', '')
+            if not self._units.domain:
+                temp_label = self._labels.domain or ''
             else:
-                temp_label = f"{getattr(self, 'domain_label', '')} ({self.domain_units_label})"
+                temp_label = f"{self._labels.domain or ''} ({self._units.domain})"
         else:
-            if self.domain_units_label:
-                temp_label = f"({self.domain_units_label})"
+            if self._units.domain:
+                temp_label = f"({self._units.domain})"
 
         ax.set_xlabel(temp_label)
         ax.set_ylabel(temp_label)
@@ -614,7 +616,7 @@ def plot_test_stats(p_value, alpha, null_dist, test_stat, test_name, hypothesis,
         verdict_label = 'Verdict: Fail to Reject $H_0$'
 
     fig, ax = plt.subplots(figsize=(10, 8))
-    
+
     ax.set_title(f'Null Distribution Plot for {test_name}')
     n, bins, patches = ax.hist(null_dist, bins=100, density=True, alpha=0.7, label='Null Distribution', color='grey', edgecolor='black')
 
@@ -646,7 +648,7 @@ def plot_test_stats(p_value, alpha, null_dist, test_stat, test_name, hypothesis,
     ax.text(
         crit_value * 1.5,                # X position: move into the shaded region
         ax.get_ylim()[1] * 0.9,          # Y position: near top
-        'Critical Region\n(Reject $H_0$)', 
+        'Critical Region\n(Reject $H_0$)',
         color='darkred',
         fontsize=10,
         ha='left',
@@ -683,6 +685,6 @@ def plot_test_stats(p_value, alpha, null_dist, test_stat, test_name, hypothesis,
     ax.tick_params(labelsize=14)
 
     plt.tight_layout()
-    plt.show(block=False) 
+    plt.show(block=False)
 
     return

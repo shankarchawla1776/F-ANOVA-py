@@ -1,5 +1,5 @@
 import numpy as np
-import pandas as pd          
+import pandas as pd
 import os
 from functionalANOVA.core.fanova import functionalANOVA
 
@@ -37,6 +37,5 @@ myANOVA.oneway(hypothesis='pairwise')
 myANOVA.oneway_bf(hypothesis='family')
 myANOVA.oneway_bf(hypothesis='pairwise')
 
-# TODO 
-# myANOVA.plot_means()
-# myANOVA.plot_covariances()
+myANOVA.plot_means('default')
+myANOVA.plot_covariances('default')

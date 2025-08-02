@@ -12,21 +12,21 @@ class ANOVALabels:
     primary: Optional[List[str]] = None
     secondary: Optional[List[str]] = None
     generic_group: Optional[bool] = True
-    
-    # unit Labels 
+
+    # unit Labels
     domain:Optional[str] = None  # such as Time
     response:Optional[str] = None
-    
+
     # Hypothesis Labels
     hypothesis: Optional[List[str]] = None
     H0_OneWay:ClassVar[Tuple[str, ...]] = ("FAMILY", "PAIRWISE")
     H0_TwoWay:ClassVar[Tuple[str, ...]] = ("FAMILY", "PAIRWISE", "INTERACTION", "PRIMARY", "SECONDARY", "CUSTOM")
-    
+
 @dataclass  # class to store units
 class ANOVAUnits:
     domain: Optional[str] = None  # Such as seconds
     response: Optional[str] = None
-    
+
 @dataclass
 class ANOVATables:
     oneway: Optional[pd.DataFrame] = None
@@ -35,8 +35,8 @@ class ANOVATables:
     twoway_bf: Optional[pd.DataFrame] = None
     covar: Optional[pd.DataFrame] = None
     sw: Optional[pd.DataFrame] = None
-    sig_figs = 4  # Significant Figures to display 
-    
+    sig_figs = 4  # Significant Figures to display
+
 @dataclass
 class ANOVAMethods:  # clas to store methods
     # Class-level constants (shared by all instances, not settable per instance)
@@ -51,22 +51,22 @@ class ANOVAMethods:  # clas to store methods
     # Instance fields (can be changed internally if needed)
     anova_methods_used: Tuple[str, ...] = ()
     covar_methods_used: Tuple[str, ...] = ()
-    
+
 @dataclass
 class ANOVAGroups:
-    
+
     k: int = 0       # One-way ANOVA: number of groups
     A: int = 0       # Two-way ANOVA: primary levels
     B: int = 0       # Two-way ANOVA: secondary levels
     AB: int = 0      # Two-way ANOVA: total combinations
-    
+
     subgroup_indicator: Union[np.ndarray, List[np.ndarray], None] = None # indicator Array for B
-    
+
     contrast: Optional[np.ndarray] = None # User Specified Constrast vector
     contrast_factor:  Optional[int] = None # Either 1 for Primary, 2 for Secondary
 
 @dataclass
-class HypothesisInfo:  # Used just for vanilla Oneway 
+class HypothesisInfo:  # Used just for vanilla Oneway
     SSH_t: np.ndarray
     pair_vec: list[str]
     q: int
@@ -75,7 +75,7 @@ class HypothesisInfo:  # Used just for vanilla Oneway
     D: Optional[np.ndarray] = None
 
 @dataclass
-class AnovaStatistics:  # Used just for vanilla Oneway 
+class AnovaStatistics:  # Used just for vanilla Oneway
     T_n: np.ndarray
     F_n: Optional[np.ndarray] = None
     beta_hat: Optional[float] = None
@@ -84,7 +84,7 @@ class AnovaStatistics:  # Used just for vanilla Oneway
     kappa_hat_unbias: Optional[float] = None
 
 class functionalANOVA():
-    
+
     @property
     def tables(self) -> ANOVATables:
         return self._tables
@@ -92,19 +92,19 @@ class functionalANOVA():
     @property
     def methods(self) -> ANOVAMethods:
         return self._methods
-    
+
     @property
     def labels(self) -> ANOVALabels:
         return  self._labels
-    
+
     @property
     def units(self) -> ANOVAUnits:
         return  self._units
-    
+
     @property
     def groups(self) -> ANOVAGroups:
-        return  self.groups
-    
+        return  self._groups
+
     def __init__(
         self,
         data_list: List[np.ndarray] | Tuple[np.ndarray],
@@ -120,8 +120,8 @@ class functionalANOVA():
         domain_units_label: Optional[str] = None,
         response_units_label: Optional[str] = None
     ):
-        
-     
+
+
         self.data = []
         self.grid_bounds = grid_bounds
         self.d_grid = d_grid
@@ -130,42 +130,42 @@ class functionalANOVA():
         self.alpha = alpha
         self._labels = ANOVALabels(group_labels, primary_labels, secondary_labels)
         self._units = ANOVAUnits(domain_units_label, response_units_label)
-        self._tables = ANOVATables() 
+        self._tables = ANOVATables()
         self._methods = ANOVAMethods()
         self._groups = ANOVAGroups(subgroup_indicator=subgroup_indicator)
-        
-      
+
+
         # Public and writable fields
         self.weights = "proportional"
         self.hypothesis = "FAMILY"
         self.verbose = True
         self.show_simul_plots = False # Shows Null distribution plots for "Simul" Methods
-        
-        # Validate All Inputs 
+
+        # Validate All Inputs
         self._validate_instantiation_inputs()
-        
+
         self._groups.k = len(data_list)
         self.n_i = tuple(x.shape[1] for x in data_list)
         self.n_ii = None
         self.N = sum(self.n_i)    # Total Samples combined
-        
+
         n_rows_per_group = [x.shape[0] for x in data_list]
         expected_length = self.d_grid.shape[0]
 
         if not all(n == expected_length for n in n_rows_per_group):
             raise ValueError("All groups/replicates must have the same vector length as the domain")
-        
+
         self._function_subsetter()
-        
+
         self.n_domain_points = len(range(self.lb_index, self.ub_index + 1))
 
         if self.n_domain_points < 1000:
             warnings.warn(f'Functional data has a resolution of {self.n_domain_points} elements. It is recommended to have a resolution of at least 1000 elements for the convergence of the F-ANOVA p-values')
-            
+
         # Subset  data
         for k in range(self._groups.k):
             self.data.append(data_list[k][self.lb_index : self.ub_index + 1, :]) # exclusive at the upper bound
-        
+
         if not self._groups.subgroup_indicator: # One Way ANOVA set up
             if  self._labels.group:
                 assert len(self._labels.group) == self._groups.k, "Each Group Must Have Exactly One Label Associated to it"
@@ -177,26 +177,61 @@ class functionalANOVA():
             self._setup_twoway()  # Creates Indicator Matrices and default Labels
             self._n_ii_generator()  # Creates Secondary Size Array
 
-    # def plot_means(self):
-    #     #TODO Migrate and integrate plotting method here
-    #     pass
+    def plot_means(self,
+                   plot_type: str,
+                   subgroup_indicator: Optional[Union[np.ndarray, List[np.ndarray]]] = None,
+                   observation_size_label: bool = True,
+                   group_labels: Optional[List[str]] = None,
+                   primary_labels: Optional[List[str]] = None,
+                   secondary_labels: Optional[List[str]] = None,
+                   x_scale: str = '',
+                   y_scale: str = '',
+                   domain_units_label: str = '',
+                   response_units_label: str = '',
+                   data_transparency: float = 0.1,
+                   legend_transparency: float = 0.3333,
+                   data_line_width: float = 1.75,
+                   mean_line_width: float = 5,
+                   font_size: int = 18,
+                   title_labels: Optional[Any] = None,
+                   save_path: str = '',
+                   legend_location: str = 'best',
+                   num_columns: int = 1,
+                   legend_title: str = '',
+                   new_colors: Optional[np.ndarray] = None,
+                   position: Tuple[int, int, int, int] = (90, 90, 1400, 800)) -> Tuple[Any, Any]:
 
-    # def plot_covariances(self):
-    #     #TODO Migrate and integrate plotting method here
-    #     pass
-    
+        return plotting.plot_means(self, plot_type, subgroup_indicator, observation_size_label, group_labels, primary_labels, secondary_labels, x_scale, y_scale, domain_units_label, response_units_label, data_transparency, legend_transparency, data_line_width, mean_line_width, font_size, title_labels, save_path, legend_location, num_columns, legend_title, new_colors, position)
+
+    def plot_covariances(self,
+                        plot_type: str,
+                        subgroup_indicator: Optional[Union[np.ndarray, List[np.ndarray]]] = None,
+                        group_labels: Optional[List[str]] = None,
+                        primary_labels: Optional[List[str]] = None,
+                        secondary_labels: Optional[List[str]] = None,
+                        x_scale: str = '',
+                        y_scale: str = '',
+                        color_scale: str = '',
+                        domain_units_label: str = '',
+                        response_units_label: str = '',
+                        title_labels: Optional[Any] = None,
+                        save_path: str = '',
+                        position: Tuple[int, int, int, int] = (90, 257, 2000, 800)) -> Any:
+
+        return plotting.plot_covariances(self, plot_type, subgroup_indicator, group_labels, primary_labels, secondary_labels, x_scale, y_scale, color_scale, domain_units_label, response_units_label, title_labels, save_path, position)
+
     def _run_oneway(self, *args, **kwargs):
         return oneway.run_oneway(self, *args, **kwargs)
-    
+
     def _run_onewayBF(self, *args, **kwargs):
         return oneway.run_onewayBF(self, *args, **kwargs)
-    
+
     def _run_twoway(self, *args, **kwargs):
         return twoway.run_twoway(self, *args, **kwargs)
-    
+
     def _run_twowayBF(self, *args, **kwargs):
         return twoway.run_twowayBF(self, *args, **kwargs)
-    
+
     def oneway(self,
                   n_boot: int = 10_000,
                   n_simul: int = 10_000,
@@ -204,21 +239,21 @@ class functionalANOVA():
                   methods: Optional[Sequence[str]] = None,
                   hypothesis: Optional[Sequence[str]] = None):
         # Still need to add args of GroupLabels and showSimulPlot
-        
+
         #Sometype of checking for inputs above
         self._validate_stat_inputs(alpha, n_boot, n_simul, methods, hypothesis)
         n_methods = len(self._methods.anova_methods_used)
-    
+
         eta_i, eta_grand, build_Covar_star = utils.compute_group_means(self._groups.k, self.n_domain_points, self.data, self.n_i, self.N)
         H0 = self._computeSSH_and_pairs(eta_i, eta_grand)
-        
+
         if np.all(H0.SSH_t < np.finfo(float).eps):
             warnings.warn("Pointwise between-subject variation is 0. Check for duplicated data matrices.")
-        
-        
+
+
         # Compute estimated covariance
         gamma_hat = (1 / (self.N - self._groups.k)) * (build_Covar_star @ build_Covar_star.T)  #changed transpose order
-        
+
         # Only Positive eigen values
         eig_gamma_hat = np.linalg.eigvalsh(gamma_hat)
         eig_gamma_hat = eig_gamma_hat[eig_gamma_hat > 0]
@@ -226,7 +261,7 @@ class functionalANOVA():
 
         # Compute SSE(t)
         SSE_t = (self.N - self._groups.k) * np.diag(gamma_hat) # Pointwise within-subject  (Group/Categorical) variations
-         
+
         match self.hypothesis:
             case 'FAMILY':
                  self._tables.oneway = pd.DataFrame({
@@ -238,41 +273,41 @@ class functionalANOVA():
                      'Parameter 1 Value': [None] * n_methods,
                      'Parameter 2 Name': [''] * n_methods,
                      'Parameter 2 Value': [None] * n_methods})
-                 
+
             case 'PAIRWISE':
                 self._tables.oneway = pd.DataFrame({'Hypothesis': H0.pair_vec})
             case _:
                 pass
-        
-        T_hypothesis = pd.DataFrame({'Hypothesis': H0.pair_vec})    
-        params = self._setup_oneway(H0, SSE_t, gamma_hat)   
-          
+
+        T_hypothesis = pd.DataFrame({'Hypothesis': H0.pair_vec})
+        params = self._setup_oneway(H0, SSE_t, gamma_hat)
+
         p_value_matrix = self._run_oneway(eig_gamma_hat, eta_i, params, H0)
-        
+
         self._prep_tables('oneway', p_value_matrix, T_hypothesis=T_hypothesis, test_stat=None)
-        
+
         if self.verbose:
             self._data_summary_report_one_way(ANOVA_TYPE='homoskedastic')
             self._show_table(self._tables.oneway)
-        
+
     def oneway_bf(self,
                   n_boot: int = 10_000,
                   n_simul: int = 10_000,
                   alpha: float = 0.05,
                   methods: Optional[Sequence[str]] = None,
                   hypothesis: Optional[Sequence[str]] = None):
-        
+
         # Still need to add args of GroupLabels
-        
+
         # Sometype of checking for inputs above
         self._validate_stat_inputs(alpha, n_boot, n_simul, methods, hypothesis)
-            
+
         n_methods = len(self._methods.anova_methods_used)
-        
+
         yy = np.vstack([arr.T for arr in self.data])
 
         pair_vec = []
-        
+
         # Set up Hypothesis
         match self.hypothesis:
             case "PAIRWISE":
@@ -290,13 +325,13 @@ class functionalANOVA():
                     t1, t2 = self._labels.group[idx[0]], self._labels.group[idx[1]]
                     pair_label = f"{t1} & {t2}"
                     pair_vec.append(pair_label)
-                    
+
             case "FAMILY":
                 n_tests = 1
                 pair_vec.append("FAMILY")
                 k = self._groups.k
                 C = np.hstack([np.eye(k - 1), -np.ones((k - 1, 1))])
-                
+
                 self._tables.oneway_bf = pd.DataFrame({
                                     'Family-Wise Method': self._methods.anova_methods_used,
                                     'Test-Statistic': [np.nan] * n_methods,
@@ -305,7 +340,7 @@ class functionalANOVA():
                                 })
             case _:
                 raise ValueError("Unknown Hypothesis provided")
-        
+
         # Iterate over Methods
         # Convert pair_vec to a DataFrame
         T_hypothesis = pd.DataFrame({'Hypothesis': pair_vec})
@@ -313,11 +348,11 @@ class functionalANOVA():
         # Create NaN matrices
         p_value_matrix = np.full((n_tests, n_methods), np.nan)
         test_stat = np.full((1, n_methods), np.nan)
-        
+
         counter = 0
         c = 0  # Assuming Equality to each other and not a generic constant
         statistic = np.nan
-        
+
         for method in  self._methods.anova_methods_used:
             p_value = np.zeros(n_tests)
 
@@ -353,7 +388,7 @@ class functionalANOVA():
 
                     case "FAMILY":
                         assert self._tables.oneway is not None, 'Oneway table is not properly setup'
-                        
+
                         self._tables.oneway["P-Value"] = np.array(p_value_matrix).flatten()
 
                         signif_results = self._tables.oneway["P-Value"] < self.alpha
@@ -377,7 +412,7 @@ class functionalANOVA():
                         # Keep the full table
                         if not isinstance(self._tables.oneway_bf, pd.DataFrame):
                             raise ValueError('oneway_bf should be a pandas dataframe')
-                        
+
                         self._tables.oneway_bf = self._tables.oneway_bf.copy()
 
                         self._tables.oneway_bf["P-Value"] = p_value_matrix.flatten()
@@ -390,7 +425,7 @@ class functionalANOVA():
                 pass
             case 'twoway_bf':
                 pass
-     
+
     def _show_table(self, table_to_show):
         temp_table = table_to_show.copy()
 
@@ -423,7 +458,7 @@ class functionalANOVA():
             temp_table["P-Value"] = temp_table["P-Value"].apply(
                 lambda x: f"{x:6.{self._tables.sig_figs}f}"
             )
-            
+
 
             # Conditionally format Parameter 1/2 Value columns
             for col in ["Parameter 1 Value", "Parameter 2 Value"]:
@@ -438,9 +473,9 @@ class functionalANOVA():
                 by=temp_table.columns[0],  # first column, e.g. "Family-Wise Method"
                 key=lambda col: col.map(method_order)
             ).reset_index(drop=True)
-        
+
         print(temp_table)
-        
+
     def _data_summary_report_one_way(self, ANOVA_TYPE):
         n_groups = len(self.n_i)
 
@@ -457,13 +492,13 @@ class functionalANOVA():
             Mystring += f"Group Labels: [{', '.join(self._labels.group)}]\n"
 
         Mystring += "\n"
-        print(Mystring) 
-     
+        print(Mystring)
+
     def _data_summary_report_two_way(self, ANOVA_TYPE):
         # Build Secondary Factor Observation Size string (B_obs_string)
         if self.n_ii is None:
             raise ValueError('n_ii attribute is None when it should be populated for this report')
-        
+
         B_obs_string_parts = []
         for k in range(self._groups.A):
             obs = ' '.join(str(x) for x in self.n_ii[k])
@@ -491,7 +526,7 @@ class functionalANOVA():
 
         Mystring += "\n"
         print(Mystring)
-            
+
     def _cast_anova_methods(self, method):
         """
         Filters self._methods.anova_methods_used to keep only valid methods.
@@ -512,49 +547,49 @@ class functionalANOVA():
         assert len(filtered) >= 1, (
             "No ANOVA methods were selected!\n"
             f"Must be at least one of the following: {', '.join(self._methods.anova_methods)}"
-        )    
-    
+        )
+
     def _validate_instantiation_inputs(self):
-        
+
         # Validate bounds
         if not isinstance(self.grid_bounds, tuple) or len(self.grid_bounds) != 2:
             raise ValueError(f"F-ANOVA bounds must be a tuple of length 2, but got {type(self.grid_bounds).__name__} with value {self.grid_bounds}")
         if not all(isinstance(x, (int, float)) for x in self.grid_bounds):
             raise ValueError(f"F-ANOVA bounds must contain numeric values, but got {self.grid_bounds}")
-        
+
         # Validate d_grid
         self.d_grid = self._cast_to_1D(self.d_grid)
 
-            
-        #TODO need to validate more inputs 
-        
+
+        #TODO need to validate more inputs
+
     def _validate_stat_inputs(self, alpha, n_boot, n_simul, methods, hypothesis):
         # Validate alpha
         if not (0 < alpha < 1):
             raise ValueError(f"alpha must be between 0 and 1, got {alpha}")
-        
+
         self.alpha = alpha
-        
+
         # Validate n_boot and n_simul
         if not isinstance(n_boot, int) or n_boot <= 0:
             raise ValueError(f"n_boot must be a positive integer, got {n_boot}")
         if not isinstance(n_simul, int) or n_simul <= 0:
             raise ValueError(f"n_simul must be a positive integer, got {n_simul}")
-        
+
         self.n_boot = n_boot
         self.n_simul = n_simul
-        
+
         # Validate ANOVA methods
         if methods is not None:
             upper_cased_methods = tuple(s.upper() for s in self._methods.anova_methods)
             for m in methods:
                 if m.upper() not in upper_cased_methods:
                     raise ValueError(f"Invalid method: {m}. Must be one of {self._methods.anova_methods}")
-                
+
             self._cast_anova_methods(methods)
         else:
             self._methods.anova_methods_used = self._methods.anova_methods
-        
+
         # Validate hypothesis: Family or Pairwise
         if hypothesis is not None:
             if not isinstance(hypothesis, str):
@@ -567,9 +602,9 @@ class functionalANOVA():
                 raise ValueError(
                     f"Invalid hypothesis: {hypothesis}. Must be one of {self._labels.H0_OneWay}"
                 )
-            
+
             self.hypothesis = hypothesis.upper()
-            
+
     def _function_subsetter(self):
 
         lb = np.min(self.grid_bounds)
@@ -604,7 +639,7 @@ class functionalANOVA():
         - A single 1D or 2D NumPy array
         Ensures final result is a 1D NumPy array of length N.
         """
-        
+
         # Flatten (from list or array) then reshape once
         if isinstance(self._groups.subgroup_indicator, list):
             assert len(self._groups.subgroup_indicator) == self._groups.k, (
@@ -630,16 +665,16 @@ class functionalANOVA():
 
         # Initialize
         T_n = np.sum(H0.SSH_t, axis=0)
-        
+
         if T_n.ndim == 0:
             T_n = T_n.reshape(1, 1)
-        
+
         F_n = np.zeros(1)
         beta_hat = 0
         kappa_hat = 0
         beta_hat_unbias = 0
         kappa_hat_unbias = 0
-        
+
         if self._tables.oneway is None:
             raise ValueError('One Way Table wasnt set up properly')
 
@@ -708,13 +743,13 @@ class functionalANOVA():
         return AnovaStatistics(T_n, F_n, beta_hat, kappa_hat, beta_hat_unbias,kappa_hat_unbias)
 
     def _setup_twoway(self):
-        
-      
+
+
         self._verifyIndicator()
-        
+
         subgroup = cast(np.ndarray, self._groups.subgroup_indicator)  #  it's only for static type checking.
         n_unique_indicators = len(np.unique(subgroup))
-        
+
         self._groups.B = n_unique_indicators
 
 
@@ -736,7 +771,7 @@ class functionalANOVA():
 
         if self.labels.group:
             raise ValueError('TwoWay ANOVA requires using "primary_labels" and "secondary_labels" as input arguments.\nIt doesnt support the "group_labels" argument due to ambiguity.')
- 
+
     def _setup_time_bar(self, method):
         match method:
             case "L2-Bootstrap":
@@ -759,17 +794,17 @@ class functionalANOVA():
                 raise ValueError(f'Unsupported method for TQDM: {method}')
 
         return desc
-    
+
     def _n_ii_generator(self):
         """
         Creates self.n_ii: a list of lists containing sample sizes for each
         (primary, secondary) combination — used for plotting in Two-Way ANOVA.
         """
-        
+
         subgroup = cast(np.ndarray, self._groups.subgroup_indicator) #  it's only for static type checking.
         labels_primary = cast(list, self._labels.primary) #  it's only for static type checking.
         labels_secondary = cast(list, self._labels.secondary) #  it's only for static type checking.
-        
+
         aflag = utils.aflag_maker(self.n_i)
         bflag = subgroup
 
@@ -803,10 +838,10 @@ class functionalANOVA():
             raise ValueError("Missing combinations detected. See warnings above.")
 
         self.n_ii = p_cell
- 
+
     def _computeSSH_and_pairs(self, eta_i, eta_grand):
         pair_vec = []
-        
+
         if self.hypothesis == "FAMILY":
             q = self._groups.k - 1  # rank of contrast matrix
             n_tests = 1
@@ -839,35 +874,34 @@ class functionalANOVA():
                 Ct = C[cc, :]  # shape: (k_groups,)
                 part12 = Ct @ eta_i.T - c  # shape: (1, n_domain_points)
                 rh_side = Ct @ D @ Ct.T
-                
+
                 if rh_side.ndim == 0:
                     SSH_t[:, cc] = (part12 ** 2).flatten() * 1/rh_side
                 else:
                     SSH_t[:, cc] = (part12 ** 2).flatten() * np.linalg.inv(rh_side)
-                
-                
+
+
 
                 # Label for the contrast
                 indices = np.where(C[cc, :] != 0)[0]
                 t1 = self._labels.group[indices[0]]
                 t2 = self._labels.group[indices[1]]
-                pair_vec.append(f"{t1} & {t2}") 
+                pair_vec.append(f"{t1} & {t2}")
         else:
-            raise ValueError(f'Unknown Hypothesis: {self.hypothesis}')   
-                
+            raise ValueError(f'Unknown Hypothesis: {self.hypothesis}')
+
         return HypothesisInfo(SSH_t, pair_vec, q, n_tests, C, D)
-    
-    @staticmethod    
+
+    @staticmethod
     def _cast_to_1D(arr):
         arr = np.asarray(arr)
-                
+
         if not np.issubdtype(arr.dtype, np.number):
             raise ValueError("d_grid must contain numeric values.")
-        
+
         if arr.ndim == 1:
             return arr
         elif arr.ndim == 2 and (arr.shape[0] == 1 or arr.shape[1] == 1):
             return np.ravel(arr)  # returns a view if possible
         else:
             raise ValueError(f"Input must be a 1D vector, or 2D row/column vector, but got array with shape {arr.shape}")
-    
