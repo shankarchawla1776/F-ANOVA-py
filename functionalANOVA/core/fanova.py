@@ -220,6 +220,10 @@ class functionalANOVA():
 
         return plotting.plot_covariances(self, plot_type, subgroup_indicator, group_labels, primary_labels, secondary_labels, x_scale, y_scale, color_scale, domain_units_label, response_units_label, title_labels, save_path, position)
 
+    def _plot_test_stats(self, p_value, null_dist, test_stat, test_name,
+                         scedasticity:str, k:int, N:int|None=None):
+        return plotting.plot_test_stats(self, p_value, null_dist, test_stat, test_name, scedasticity, k, N)
+
     def _run_oneway(self, *args, **kwargs):
         return oneway.run_oneway(self, *args, **kwargs)
 
@@ -273,7 +277,7 @@ class functionalANOVA():
                      'Parameter 1 Value': [None] * n_methods,
                      'Parameter 2 Name': [''] * n_methods,
                      'Parameter 2 Value': [None] * n_methods})
-
+                 self._labels.hypothesis = ['Family']
             case 'PAIRWISE':
                 self._tables.oneway = pd.DataFrame({'Hypothesis': H0.pair_vec})
             case _:
@@ -329,6 +333,7 @@ class functionalANOVA():
             case "FAMILY":
                 n_tests = 1
                 pair_vec.append("FAMILY")
+                self._labels.hypothesis = pair_vec
                 k = self._groups.k
                 C = np.hstack([np.eye(k - 1), -np.ones((k - 1, 1))])
 

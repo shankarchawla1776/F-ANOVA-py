@@ -6,7 +6,7 @@ from matplotlib.lines import Line2D
 import os
 import math
 from functionalANOVA.core import utils
-
+from typing import Union, Optional
 
 # TODO: Needs work
 def plot_means(self, plot_type='default', subgroup_indicator=None, observation_size_label=True, group_labels=None, primary_labels=None, secondary_labels=None, x_scale='', y_scale='', domain_units_label='', response_units_label='', data_transparency=0.1, legend_transparency=0.3333, data_line_width=1.75, mean_line_width=5, font_size=18, title_labels=None, save_path='', legend_location='best', num_columns=1, legend_title='', new_colors=None, position=(90, 90, 1400, 800)):
@@ -340,7 +340,7 @@ def plot_means(self, plot_type='default', subgroup_indicator=None, observation_s
         fig.savefig(os.path.join(save_path, save_filename))
         plt.close(fig)
     else:
-        plt.show()
+        plt.show(block=False)
 
     return fig, ax
 
@@ -599,20 +599,22 @@ def plot_covariances(self, plot_type='default', subgroup_indicator=None, group_l
         fig.savefig(os.path.join(save_path, save_filename))
         plt.close(fig)
     else:
-        plt.show()
+        plt.show(block=False)
 
     return fig
 
 # TODO: Some option or ability to save these plots
-def plot_test_stats(p_value, alpha, null_dist, test_stat, test_name, hypothesis, hypothesis_label):
+def plot_test_stats(self, p_value:float | np.floating, null_dist:np.ndarray, test_stat:float | np.floating,
+                    test_name:str, scedasticity:str,  k:int, N:int|None = None):
+    
     p_value = float(p_value)
 
-    if p_value <= alpha:
-        line_label = f'{test_name} Statistic P-Value: p={p_value: 0.2f} <= {alpha}'
+    if p_value <= self.alpha:
+        line_label = f'{test_name} Statistic P-Value: p={p_value: 0.2f} <= {self.alpha}'
         verdict_label = 'Verdict: Reject $H_0$'
 
     else:
-        line_label = f'{test_name} Statistic P-Value: p={p_value: 0.2f} > {alpha}'
+        line_label = f'{test_name} Statistic P-Value: p={p_value: 0.2f} > {self.alpha}'
         verdict_label = 'Verdict: Fail to Reject $H_0$'
 
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -620,10 +622,10 @@ def plot_test_stats(p_value, alpha, null_dist, test_stat, test_name, hypothesis,
     ax.set_title(f'Null Distribution Plot for {test_name}')
     n, bins, patches = ax.hist(null_dist, bins=100, density=True, alpha=0.7, label='Null Distribution', color='grey', edgecolor='black')
 
-    ax.axvline(test_stat, color='blue', linestyle='--', linewidth=1.5, label=line_label)
+    ax.axvline(float(test_stat), color='blue', linestyle='--', linewidth=1.5, label=line_label)
 
     ax.text(
-        test_stat,                          # x: aligned with the line
+        float(test_stat),                          # x: aligned with the line
         ax.get_ylim()[1] * 0.5,             # y: middle of the y-axis
         f'p = {p_value:.2f}',
         color='blue',
@@ -637,7 +639,7 @@ def plot_test_stats(p_value, alpha, null_dist, test_stat, test_name, hypothesis,
         ax.set_xscale('log')
         ax.minorticks_on()
 
-    crit_value = np.quantile(null_dist, 1 - alpha)
+    crit_value = np.quantile(null_dist, 1 - self.alpha)
 
     x_max = max(np.max(null_dist), test_stat) * 1.2  # ensure room for shading
     ax.set_xlim(right=x_max)
@@ -662,17 +664,21 @@ def plot_test_stats(p_value, alpha, null_dist, test_stat, test_name, hypothesis,
 
     title_label = ''
     if 'f' in test_name.lower():
-        null_dist_label = 'Simulated F-type Mixture Null Distribution'
-        if hypothesis == "FAMILY":
-            title_label = 'One-Way, Family, Functional ANOVA: F-type test'
-        elif hypothesis == "PAIRWISE":
-            title_label = f'One-Way, Pairwise ({hypothesis_label}), Functional ANOVA: F-type test'
+        assert N is not None and isinstance(N, int), "'N' must be provided for F-type mixture labeling"
+        
+        null_dist_label = fr'Simulated $F_{{(k-1),(n-k)}} = F_{{({k - 1}),({N - k})}}$-type Mixture Null Distribution'
+        if self.hypothesis == "FAMILY":
+            title_label = f'One-Way({scedasticity}), Family, Functional ANOVA: F-type test'
+        elif self.hypothesis == "PAIRWISE":
+            title_label = (f"One-Way({scedasticity}), Pairwise ({self._labels.hypothesis})\n" r"Functional ANOVA: F-type test")
     else:
-        null_dist_label = r'Simulated $\chi^2_{1}$-type Mixture Null Distribution'
-        if hypothesis == "FAMILY":
-            title_label = 'One-Way, Family, Functional ANOVA: Squared L-2 Norm test'
-        elif hypothesis== "PAIRWISE":
-            title_label = f'One-Way, Pairwise ({hypothesis_label}), Functional ANOVA: Squared L-2 Norm test'
+        null_dist_label = fr'Simulated $\chi^2_{{(k-1)}} = \chi^2_{{{k - 1}}}$-type Mixture Null Distribution'
+        if self.hypothesis == "FAMILY":
+            title_label = fr'One-Way ({scedasticity}), Family, Functional ANOVA: Squared $L^2$ Norm test'
+        elif self.hypothesis== "PAIRWISE":
+            title_label = (f"One-Way ({scedasticity}), Pairwise ({self._labels.hypothesis})\n"
+                           r"Functional ANOVA: F-type test")
+
 
     ax.set_ylabel('PDF', fontsize=14)
     ax.set_xlabel(null_dist_label, fontsize=14)

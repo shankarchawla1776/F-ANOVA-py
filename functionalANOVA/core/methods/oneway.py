@@ -33,9 +33,10 @@ def run_oneway(self, eig_gamma_hat, eta_i, params, H0):
             for j in range(H0.n_tests):
                 p_value[j] = 1 - T_NullFitted.integrate_box_1d(-np.inf, params.T_n[j])
                 p_value[j] = max(0,min(1,p_value[j]))
+                self._labels.hypothesis = H0.pair_vec[j]
 
                 if self.show_simul_plots:
-                    plotting.plot_test_stats(p_value[j], self.alpha, T_null, params.T_n[j], method + " test", self.hypothesis, H0.pair_vec[j])
+                    self._plot_test_stats(p_value[j], T_null, params.T_n[j], method, scedasticity='homoscedastic', k=self._groups.k)
 
             pvalue_matrix[:, counter-1] = p_value.flatten()
 
@@ -126,7 +127,7 @@ def run_oneway(self, eig_gamma_hat, eta_i, params, H0):
                 p_value[j] = max(0,min(1,p_value[j]))
                 
                 if self.show_simul_plots:
-                    plotting.plot_test_stats(p_value[j], self.alpha, F_null, params.F_n[j], method + " test", self.hypothesis, H0.pair_vec[j])
+                    self._plot_test_stats(p_value[j], F_null, params.F_n[j], method, scedasticity='homoscedastic', k=self._groups.k, N=self.N)
 
             pvalue_matrix[:, counter-1] = p_value.flatten()
 
@@ -497,7 +498,7 @@ def run_onewayBF(self, method, data, contrast, c, indicator_a=None):
                         build_covar_star = np.hstack([build_covar_star, ri.T])
 
                 g_n = gsize[mask]
-                N_n = np.sum(g_n)
+                N_n = int(np.sum(g_n))
                 k_n = len(g_n)
 
                 COV_Sum = COV_Sum / (N_n - k_n)
@@ -526,6 +527,10 @@ def run_onewayBF(self, method, data, contrast, c, indicator_a=None):
                 pvalue = max(0,min(1,pvalue))
 
                 pstat = [f_stat, pvalue]
+                
+                if self.show_simul_plots:
+                    self._plot_test_stats(pvalue, T_null, stat0, method, scedasticity='heteroscedastic', k=k_n, N=N_n)
+                
             else:
                 pstat = [f_stat, np.nan]
 
@@ -590,7 +595,7 @@ def run_onewayBF(self, method, data, contrast, c, indicator_a=None):
                     build_covar_star = np.hstack([build_covar_star, ri.T])
 
             g_n = gsize[mask]
-            N_n = np.sum(g_n)
+            N_n = int(np.sum(g_n))
             k_n = len(g_n)
 
             COV_Sum = COV_Sum / (N_n - k_n)
@@ -605,6 +610,9 @@ def run_onewayBF(self, method, data, contrast, c, indicator_a=None):
             pvalue = 1 - T_NullFitted.integrate_box_1d(-np.inf, stat0)
             pvalue = max(0,min(1,pvalue))
             pstat = [stat0, pvalue]
+            
+            if self.show_simul_plots:
+                self._plot_test_stats(pvalue, T_null, stat0, method, scedasticity='heteroscedastic', k=k_n, N=N_n)
 
 
     else:
