@@ -27,7 +27,9 @@ time = df["t"].to_numpy()
 bounds = (-np.inf, np.inf)
 
 myANOVA = functionalANOVA(data_list=group_arrays, d_grid=time, grid_bounds=bounds,
-                          group_labels=['Group A', 'Group B', 'Group C'])
+                          group_labels=['Group A', 'Group B', 'Group C'],
+                          domain_label='Time', domain_units='Seconds',
+                          response_label='Temperature', response_units='Celcius')
 
 myANOVA.show_simul_plots = False
 
@@ -37,5 +39,5 @@ myANOVA.oneway(hypothesis='pairwise')
 myANOVA.oneway_bf(hypothesis='family')
 myANOVA.oneway_bf(hypothesis='pairwise')
 
-myANOVA.plot_means('default')
+myANOVA.plot_means()
 myANOVA.plot_covariances('default')

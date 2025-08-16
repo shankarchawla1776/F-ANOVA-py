@@ -6,51 +6,125 @@ from matplotlib.lines import Line2D
 import os
 import math
 from functionalANOVA.core import utils
-from typing import Union, Optional
+from typing import Union, Optional, Any, Tuple
+from matplotlib.colors import Colormap, ListedColormap
+from dataclasses import dataclass
 
-# TODO: Needs work
-def plot_means(self, plot_type='default', subgroup_indicator=None, observation_size_label=True, group_labels=None, primary_labels=None, secondary_labels=None, x_scale='', y_scale='', domain_units_label='', response_units_label='', data_transparency=0.1, legend_transparency=0.3333, data_line_width=1.75, mean_line_width=5, font_size=18, title_labels=None, save_path='', legend_location='best', num_columns=1, legend_title='', new_colors=None, position=(90, 90, 1400, 800)):
 
-    def _legend_locations():
-        return [
-            'upper right',
-            'upper left',
-            'lower left',
-            'lower right',
-            'right',
-            'center left',
-            'center right',
-            'lower center',
-            'upper center',
-            'center',
-            'best'
-        ]
+class PlotOptions:
+    # Class-level constant of valid legend locations
+    _VALID_LEGEND_LOCATIONS = [
+        "upper right",
+        "upper left",
+        "lower left",
+        "lower right",
+        "right",
+        "center left",
+        "center right",
+        "lower center",
+        "upper center",
+        "center",
+        "best",
+    ]
 
-    if subgroup_indicator is not None:
-        self._groups.subgroup_indicator = subgroup_indicator
-    if group_labels is not None:
-        self._labels.group = group_labels
-    if primary_labels is not None:
-        self._labels.primary = primary_labels
-    if secondary_labels is not None:
-        self._labels.secondary = secondary_labels
-    if domain_units_label:
-        self._units.domain = domain_units_label
-    if response_units_label:
-        self._units.response = response_units_label
+    def __init__(
+        self,
+        observation_size_label: bool=True,
+        x_scale: str = "linear",
+        y_scale: str = "linear",
+        data_transparency: float = 0.1,
+        legend_transparency: float = 0.3333,
+        data_line_width: float = 1.75,
+        mean_line_width: float = 5,
+        font_size: int = 18,
+        title_labels: Optional[Any] = None,
+        save_path: str = "",
+        legend_location: str = "best",
+        num_columns: int = 1,
+        legend_title: str = "",
+        new_colors: Optional[np.ndarray] = None,
+        position: Tuple[int, int, int, int] = (90, 90, 1400, 800),
+    ):
+        
+        self.observation_size_label = observation_size_label
+        self.x_scale = x_scale
+        self.y_scale = y_scale
+        self.data_transparency = data_transparency
+        self.legend_transparency = legend_transparency
+        self.data_line_width = data_line_width
+        self.mean_line_width = mean_line_width
+        self.font_size = font_size
+        self.title_labels = title_labels
+        self.save_labels = title_labels
+        self.save_path = save_path
+        self.legend_location = legend_location
+        self.num_columns = num_columns
+        self.legend_title = legend_title
+        self.new_colors = new_colors
+        self.position = position
+
+        self._validate()
+
+    def _validate(self):
+        # scales
+        valid_scales = ("linear", "log", "symlog", "logit")
+        if self.x_scale not in valid_scales:
+            raise ValueError(f"x_scale must be one of {valid_scales}, got {self.x_scale!r}")
+        if self.y_scale not in valid_scales:
+            raise ValueError(f"y_scale must be one of {valid_scales}, got {self.y_scale!r}")
+
+        # alpha-like params
+        if not (0.0 <= self.data_transparency <= 1.0):
+            raise ValueError(f"data_transparency must be in [0, 1], got {self.data_transparency}")
+        if not (0.0 <= self.legend_transparency <= 1.0):
+            raise ValueError(f"legend_transparency must be in [0, 1], got {self.legend_transparency}")
+
+        # legend options
+        if not isinstance(self.legend_title, str):
+            raise TypeError(f"legend_title must be a string, got {type(self.legend_title).__name__}")
+        if self.legend_location not in self._VALID_LEGEND_LOCATIONS:
+            raise ValueError(
+                f"legend_location must be one of {self._VALID_LEGEND_LOCATIONS}, got {self.legend_location!r}"
+            )
+
+        # layout options
+        if not isinstance(self.num_columns, int) or self.num_columns < 1:
+            raise ValueError("num_columns must be an integer >= 1")
+        if not (isinstance(self.position, tuple) and len(self.position) == 4 and all(isinstance(v, int) for v in self.position)):
+            raise ValueError("position must be a tuple of 4 integers, e.g. (x, y, width, height)")
+
+        # save_path: if provided, it must be an existing directory
+        if isinstance(self.save_path, str) and self.save_path != "":
+            normalized = os.path.abspath(os.path.expanduser(self.save_path))
+            if not os.path.isdir(normalized):
+                raise ValueError(f"save_path must be an existing directory, got {self.save_path!r}")
+            self.save_path = normalized  # normalize
+            
+    def update_from_dict(self, updates: dict) -> None:
+        """
+        Update PlotOptions from a dictionary. 
+        Only applies changes if value is not None and different.
+        """
+        for key, value in updates.items():
+            if value is not None and hasattr(self, key):
+                if getattr(self, key) != value:
+                    setattr(self, key, value)
+        self._validate()
+
+
+# TODO: Cleaner than passing tons of args in. Need to verify twoway plotting
+def plot_means(self, plot_type):
 
     plot_type = plot_type.upper()
+    n_labels = []
+    the_labels  = []
 
-    domain_label = self._labels.domain or ''
-    response_label = self._labels.response or ''
 
-    if not self._groups.subgroup_indicator:
-
-        assert plot_type == 'DEFAULT', 'TwoWay plotting options require a subgroup_indicator argument'
+    if self._groups.subgroup_indicator is None:
         the_labels = self._labels.group
         n_labels = self.n_i
     else:
-        set_up_two_way(self)
+        self._setup_twoway(self)
 
         if plot_type in ['DEFAULT', 'PRIMARY']:
             plot_type = 'PRIMARY'
@@ -65,10 +139,10 @@ def plot_means(self, plot_type='default', subgroup_indicator=None, observation_s
                     n_labels[kk] += self.n_ii[k][kk]
 
         elif plot_type == "INTERACTION":
-            the_labels = generate_two_way_comb(self)
+            the_labels = utils.generate_two_way_comb(self)
             n_labels = np.concatenate([item for sublist in self.n_ii for item in sublist])
 
-    if observation_size_label:
+    if self.plottingOptions.observation_size_label:
         if self._labels.generic_group:
             the_data_labels = [f": Group Data ({int(n)})" for n in n_labels]
         else:
@@ -76,273 +150,239 @@ def plot_means(self, plot_type='default', subgroup_indicator=None, observation_s
     else:
         the_data_labels = [''] * len(n_labels)
 
-    if getattr(self, 'generic_group_labels', True):
+    if self._labels.generic_group:
         mean_group_labels = [f"{label}: Group Mean" for label in the_labels]
         data_group_labels = [f"{the_labels[i]}{the_data_labels[i]}" for i in range(len(the_labels))]
     else:
         mean_group_labels = [f"{label}: Mean" for label in the_labels]
         data_group_labels = [f"{the_labels[i]}{the_data_labels[i]}" for i in range(len(the_labels))]
 
-    title_labels_str = ''
-    save_labels = ''
-    class_type = ''
-
-    if hasattr(self, 'echo_ensemble_recs') and self.echo_ensemble_recs is not None:
-        if title_labels:
-            title_labels_str = self.echo_ensemble_recs.make_summary_string(title_labels, True)
-            save_labels = self.echo_ensemble_recs.make_summary_string(title_labels, True, sanitize_string=True)
-        class_type = type(self.echo_ensemble_recs.pull_sample.sources).__name__
-    else:
-        if title_labels:
-            title_labels_str = str(title_labels)
-            save_labels = str(title_labels)
 
     # fast patch for figure scale errors
-    fig_width = max(position[2] / 100, 8)
-    fig_height = max(position[3] / 100, 6)
+    fig_width = max(self.plottingOptions.position[2] / 100, 8)
+    fig_height = max(self.plottingOptions.position[3] / 100, 6)
 
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
-    if plot_type == 'DEFAULT':
-        mean_groups = [np.mean(data, axis=1) for data in self.data]
+    match plot_type:
+        case 'DEFAULT':
+            mean_groups = [np.mean(data, axis=1) for data in self.data]
 
-        if new_colors is None:
-            if self._groups.k < 7:
-                color_list = plt.cm.tab10(np.linspace(0, 1, self._groups.k))
+            if self.plottingOptions.new_colors is None:
+                if self._groups.k < 7:
+                    color_list = plt.cm.tab10(np.linspace(0, 1, self._groups.k))
+                else:
+                    color_list = plt.cm.turbo(np.linspace(0, 1, self._groups.k))
             else:
-                color_list = plt.cm.turbo(np.linspace(0, 1, self._groups.k))
-        else:
-            assert new_colors.shape[1] == 3, 'Color order matrix must have 3 columns representing RGB values from 0 to 1'
-            assert new_colors.shape[0] >= self._groups.k, f'Color order matrix must have at least {self._groups.k} rows representing all the groups'
-            color_list = new_colors
+                assert self.plottingOptions.new_colors.shape[1] == 4, 'Color order matrix must have 4 columns representing RGB values from 0 to 1 with the last column being alpha the transparency'
+                assert self.plottingOptions.new_colors.shape[0] >= self._groups.k, f'Color order matrix must have at least {self._groups.k} rows representing all the groups'
+                color_list = self.plottingOptions.new_colors
 
-        plot_reals = []
-        legend_example_lines = []
+            plot_reals = []
+            legend_example_lines = []
 
-        for k in range(self._groups.k):
-            lines = ax.plot(self.d_grid, self.data[k], color=color_list[k], linewidth=data_line_width, alpha=data_transparency)
-            plot_reals.append(lines)
+            for k in range(self._groups.k):
+                lines = ax.plot(self.d_grid, self.data[k], color=color_list[k], linewidth=self.plottingOptions.data_line_width, alpha=self.plottingOptions.data_transparency)
+                plot_reals.append(lines)
 
-            legend_line = Line2D([0], [0], color=color_list[k], linewidth=data_line_width, alpha=legend_transparency)
-            legend_example_lines.append(legend_line)
+                legend_line = Line2D([0], [0], color=color_list[k], linewidth=self.plottingOptions.data_line_width, alpha=self.plottingOptions.legend_transparency)
+                legend_example_lines.append(legend_line)
 
-        plot_means = []
+            plot_means = []
 
-        for k in range(self._groups.k):
-            line, = ax.plot(self.d_grid, mean_groups[k], color=color_list[k],
-                          linewidth=mean_line_width, linestyle='--')
-            plot_means.append(line)
+            for k in range(self._groups.k):
+                line, = ax.plot(self.d_grid, mean_groups[k], color=color_list[k],
+                            linewidth=self.plottingOptions.mean_line_width, linestyle='--')
+                plot_means.append(line)
 
-        ax.set_title(f'F-ANOVA Group Means and Realizations {title_labels_str}', fontsize=font_size)
-        lg = ax.legend(plot_means + legend_example_lines, mean_group_labels + data_group_labels, loc=legend_location, ncol=num_columns)
+            ax.set_title(f'F-ANOVA Group Means and Realizations {self.plottingOptions.title_labels}', fontsize=self.plottingOptions.font_size)
+            lg = ax.legend(plot_means + legend_example_lines, mean_group_labels + data_group_labels, loc=self.plottingOptions.legend_location, ncol=self.plottingOptions.num_columns)
 
-        if legend_title:
-            lg.set_title(legend_title)
+            if self.plottingOptions.legend_title:
+                lg.set_title(self.plottingOptions.legend_title)
 
-    elif plot_type == 'PRIMARY':
-        mean_groups = [np.mean(data, axis=1) for data in self.data]
+        case 'PRIMARY':
+            mean_groups = [np.mean(data, axis=1) for data in self.data]
 
-        if new_colors is None:
-            if self._groups.k < 7:
-                color_list = plt.cm.tab10(np.linspace(0, 1, self._groups.k))
+            if self.plottingOptions.new_colors is None:
+                if self._groups.k < 7:
+                    color_list = plt.cm.tab10(np.linspace(0, 1, self._groups.k))
+                else:
+                    color_list = plt.cm.turbo(np.linspace(0, 1, self._groups.k))
             else:
-                color_list = plt.cm.turbo(np.linspace(0, 1, self._groups.k))
-        else:
-            color_list = new_colors
+                color_list = self.plottingOptions.new_colors
 
-        plot_reals = []
-        legend_example_lines = []
+            plot_reals = []
+            legend_example_lines = []
 
-        for k in range(self._groups.k):
-            lines = ax.plot(self.d_grid, self.data[k], color=color_list[k], linewidth=data_line_width, alpha=data_transparency)
-            plot_reals.append(lines)
+            for k in range(self._groups.k):
+                lines = ax.plot(self.d_grid, self.data[k], color=color_list[k], linewidth=self.plottingOptions.data_line_width, alpha=self.plottingOptions.data_transparency)
+                plot_reals.append(lines)
 
-            legend_line = Line2D([0], [0], color=color_list[k], linewidth=data_line_width, alpha=legend_transparency)
-            legend_example_lines.append(legend_line)
+                legend_line = Line2D([0], [0], color=color_list[k], linewidth=self.plottingOptions.data_line_width, alpha=self.plottingOptions.legend_transparency)
+                legend_example_lines.append(legend_line)
 
-        plot_means = []
+            plot_means = []
 
-        for k in range(self._groups.k):
-            line, = ax.plot(self.d_grid, mean_groups[k], color=color_list[k], linewidth=mean_line_width, linestyle='--')
-            plot_means.append(line)
+            for k in range(self._groups.k):
+                line, = ax.plot(self.d_grid, mean_groups[k], color=color_list[k], linewidth=self.plottingOptions.mean_line_width, linestyle='--')
+                plot_means.append(line)
 
-        ax.set_title(f'F-ANOVA Primary Factor Means and Realizations {title_labels_str}', fontsize=font_size)
-        lg = ax.legend(plot_means + legend_example_lines, mean_group_labels + data_group_labels, loc=legend_location, ncol=num_columns)
+            ax.set_title(f'F-ANOVA Primary Factor Means and Realizations {self.plottingOptions.title_labels}', fontsize=self.plottingOptions.font_size)
+            lg = ax.legend(plot_means + legend_example_lines, mean_group_labels + data_group_labels, loc=self.plottingOptions.legend_location, ncol=self.plottingOptions.num_columns)
 
-        if not legend_title:
-            lg.set_title("Primary Factor Levels")
-        else:
-            lg.set_title(legend_title)
-
-    elif plot_type == 'SECONDARY':
-        yy = np.concatenate([data.T for data in self.data], axis=0)
-
-        bflag = self._groups.subgroup_indicator
-        bflag0 = np.unique(bflag)
-        n_secondary = len(bflag0)
-
-        if new_colors is None:
-            if n_secondary < 7:
-                color_list = plt.cm.tab10(np.linspace(0, 1, n_secondary))
+            if not self.plottingOptions.legend_title:
+                lg.set_title("Primary Factor Levels")
             else:
-                color_list = plt.cm.turbo(np.linspace(0, 1, n_secondary))
-        else:
-            color_list = new_colors
+                lg.set_title(self.plottingOptions.legend_title)
 
-        sub_data = []
-        mean_groups = []
+        case 'SECONDARY':
+            yy = np.concatenate([data.T for data in self.data], axis=0)
 
-        for k in range(n_secondary):
-            flag = bflag == bflag0[k]
-            sub_data_k = yy[flag, :].T
-            sub_data.append(sub_data_k)
-            mean_groups.append(np.mean(sub_data_k, axis=1))
+            bflag = self._groups.subgroup_indicator
+            bflag0 = np.unique(bflag)
+            n_secondary = len(bflag0)
 
-        plot_reals = []
-        legend_example_lines = []
-
-        for k in range(n_secondary):
-            lines = ax.plot(self.d_grid, sub_data[k], color=color_list[k], linewidth=data_line_width, alpha=data_transparency)
-            plot_reals.append(lines)
-
-            legend_line = Line2D([0], [0], color=color_list[k], linewidth=data_line_width, alpha=legend_transparency)
-            legend_example_lines.append(legend_line)
-
-        plot_means = []
-
-        for k in range(n_secondary):
-            line, = ax.plot(self.d_grid, mean_groups[k], color=color_list[k],
-                          linewidth=mean_line_width, linestyle='--')
-            plot_means.append(line)
-
-        ax.set_title(f'F-ANOVA Secondary Factor Means and Realizations {title_labels_str}', fontsize=font_size)
-        lg = ax.legend(plot_means + legend_example_lines, mean_group_labels + data_group_labels, loc=legend_location, ncol=num_columns)
-
-        if not legend_title:
-            lg.set_title("Secondary Factor Levels")
-        else:
-            lg.set_title(legend_title)
-
-    elif plot_type == 'INTERACTION':
-        yy = np.concatenate([data.T for data in self.data], axis=0)
-
-        aflag = np.repeat(np.arange(1, self._groups.A + 1), self.n_i)
-        bflag = self._groups.subgroup_indicator
-        aflag0 = np.unique(aflag)
-        bflag0 = np.unique(bflag)
-        p, q = len(aflag0), len(bflag0)
-        ab = p * q
-
-        combinations = generate_two_way_comb(self)
-        mean_labels = [f"{comb}: Mean" for comb in combinations]
-
-        if observation_size_label:
-            data_labels = [f"{combinations[k]}: Data ({int(n_labels[k])})" for k in range(len(combinations))]
-        else:
-            data_labels = [f"{comb}: Data" for comb in combinations]
-
-        if new_colors is None:
-            if ab < 7:
-                color_list = plt.cm.tab10(np.linspace(0, 1, ab))
+            if self.plottingOptions.new_colors is None:
+                if n_secondary < 7:
+                    color_list = plt.cm.tab10(np.linspace(0, 1, n_secondary))
+                else:
+                    color_list = plt.cm.turbo(np.linspace(0, 1, n_secondary))
             else:
-                color_list = plt.cm.turbo(np.linspace(0, 1, ab))
-        else:
-            color_list = new_colors
+                color_list = self.plottingOptions.new_colors
 
-        sub_data = []
-        mean_groups = []
-        counter = 0
+            sub_data = []
+            mean_groups = []
 
-        for i in aflag0:
-            for j in bflag0:
-                ijflag = (aflag == i) & (bflag == j)
-                yyi = yy[ijflag, :]
-                sub_data.append(yyi.T)
-                mean_groups.append(np.mean(yyi, axis=0))
-                counter += 1
+            for k in range(n_secondary):
+                flag = bflag == bflag0[k]
+                sub_data_k = yy[flag, :].T
+                sub_data.append(sub_data_k)
+                mean_groups.append(np.mean(sub_data_k, axis=1))
 
-        plot_reals = []
-        legend_example_lines = []
+            plot_reals = []
+            legend_example_lines = []
 
-        for k in range(ab):
-            lines = ax.plot(self.d_grid, sub_data[k], color=color_list[k], linewidth=data_line_width, alpha=data_transparency)
-            plot_reals.append(lines)
+            for k in range(n_secondary):
+                lines = ax.plot(self.d_grid, sub_data[k], color=color_list[k], linewidth=self.plottingOptions.data_line_width, alpha=self.plottingOptions.data_transparency)
+                plot_reals.append(lines)
 
-            legend_line = Line2D([0], [0], color=color_list[k],linewidth=data_line_width, alpha=legend_transparency)
-            legend_example_lines.append(legend_line)
+                legend_line = Line2D([0], [0], color=color_list[k], linewidth=self.plottingOptions.data_line_width, alpha=self.plottingOptions.legend_transparency)
+                legend_example_lines.append(legend_line)
 
-        plot_means = []
+            plot_means = []
 
-        for k in range(ab):
-            line, = ax.plot(self.d_grid, mean_groups[k], color=color_list[k], linewidth=mean_line_width, linestyle='--')
-            plot_means.append(line)
+            for k in range(n_secondary):
+                line, = ax.plot(self.d_grid, mean_groups[k], color=color_list[k],
+                            linewidth=self.plottingOptions.mean_line_width, linestyle='--')
+                plot_means.append(line)
 
-        ax.set_title(f'F-ANOVA Primary and Secondary Factor Combinatorial Means and Realizations {title_labels_str}', fontsize=font_size)
-        lg = ax.legend(plot_means + legend_example_lines, mean_labels + data_labels, loc=legend_location, ncol=num_columns)
+            ax.set_title(f'F-ANOVA Secondary Factor Means and Realizations {self.plottingOptions.title_labels}', fontsize=self.plottingOptions.font_size)
+            lg = ax.legend(plot_means + legend_example_lines, mean_group_labels + data_group_labels, loc=self.plottingOptions.legend_location, ncol=self.plottingOptions.num_columns)
 
-        if not legend_title:
-            lg.set_title("TwoWay Factor Levels")
-        else:
-            lg.set_title(legend_title)
+            if not self.plottingOptions.legend_title:
+                lg.set_title("Secondary Factor Levels")
+            else:
+                lg.set_title(self.plottingOptions.legend_title)
 
-    if hasattr(self, 'echo_ensemble_recs') and self.echo_ensemble_recs is not None:
-        if self._units.domain:
-            ax.set_xlabel(f'{domain_label} ({self._units.domain})', fontsize=font_size)
-        else:
-            ax.set_xlabel(domain_label, fontsize=font_size)
+        case 'INTERACTION':
+            yy = np.concatenate([data.T for data in self.data], axis=0)
 
-        if self._units.response:
-            ax.set_ylabel(f'{response_label} ({self._units.response})', fontsize=font_size)
-        else:
-            ax.set_ylabel(response_label, fontsize=font_size)
-    else:
-        if self._units.domain:
-            ax.set_xlabel(f'({self._units.domain})', fontsize=font_size)
+            aflag = np.repeat(np.arange(1, self._groups.A + 1), self.n_i)
+            bflag = self._groups.subgroup_indicator
+            aflag0 = np.unique(aflag)
+            bflag0 = np.unique(bflag)
+            p, q = len(aflag0), len(bflag0)
+            ab = p * q
 
-        if self._units.response:
-            ax.set_ylabel(f'({self._units.response})', fontsize=font_size)
+            combinations = utils.generate_two_way_comb(self)
+            mean_labels = [f"{comb}: Mean" for comb in combinations]
 
-    if (
-        class_type.lower() == 'psdrecord'
-        or class_type.lower() == 'srsrecord'
-        or class_type.lower() == 'spectralrecord'
-        or (
-            'srs' in response_label.lower()
-            and (not x_scale or not y_scale)
-        )
-    ):
-        if not x_scale:
-            ax.set_xscale('log')
-        else:
-            ax.set_xscale(x_scale)
+            if self.plottingOptions.observation_size_label:
+                data_labels = [f"{combinations[k]}: Data ({int(n_labels[k])})" for k in range(len(combinations))]
+            else:
+                data_labels = [f"{comb}: Data" for comb in combinations]
 
-        if not y_scale:
-            ax.set_yscale('log')
-        else:
-            ax.set_yscale(y_scale)
-    else:
-        if not x_scale:
-            ax.set_xscale('linear')
-        else:
-            ax.set_xscale(x_scale)
+            if self.plottingOptions.new_colors is None:
+                if ab < 7:
+                    color_list = plt.cm.tab10(np.linspace(0, 1, ab))
+                else:
+                    color_list = plt.cm.turbo(np.linspace(0, 1, ab))
+            else:
+                color_list = self.plottingOptions.new_colors
 
-        if not y_scale:
-            ax.set_yscale('linear')
-        else:
-            ax.set_yscale(y_scale)
+            sub_data = []
+            mean_groups = []
+            counter = 0
 
-    ax.tick_params(labelsize=font_size)
+            for i in aflag0:
+                for j in bflag0:
+                    ijflag = (aflag == i) & (bflag == j)
+                    yyi = yy[ijflag, :]
+                    sub_data.append(yyi.T)
+                    mean_groups.append(np.mean(yyi, axis=0))
+                    counter += 1
 
-    if save_path and os.path.isdir(save_path):
+            plot_reals = []
+            legend_example_lines = []
 
-        save_filename = f"GroupMeans_{save_labels}.png"
+            for k in range(ab):
+                lines = ax.plot(self.d_grid, sub_data[k], color=color_list[k], linewidth=self.plottingOptions.data_line_width, alpha=self.plottingOptions.data_transparency)
+                plot_reals.append(lines)
 
-        fig.savefig(os.path.join(save_path, save_filename))
+                legend_line = Line2D([0], [0], color=color_list[k],linewidth=self.plottingOptions.data_line_width, alpha=self.plottingOptions.legend_transparency)
+                legend_example_lines.append(legend_line)
+
+            plot_means = []
+
+            for k in range(ab):
+                line, = ax.plot(self.d_grid, mean_groups[k], color=color_list[k], linewidth=self.plottingOptions.mean_line_width, linestyle='--')
+                plot_means.append(line)
+
+            ax.set_title(f'F-ANOVA Primary and Secondary Factor Combinatorial Means and Realizations {self.plottingOptions.title_labels}', fontsize=self.plottingOptions.font_size)
+            lg = ax.legend(plot_means + legend_example_lines, mean_labels + data_labels, loc=self.plottingOptions.legend_location, ncol=self.plottingOptions.num_columns)
+
+            if not self.plottingOptions.legend_title:
+                lg.set_title("TwoWay Factor Levels")
+            else:
+                lg.set_title(self.plottingOptions.legend_title)
+
+
+    ax.set_xscale(self.plottingOptions.x_scale)
+    ax.set_yscale(self.plottingOptions.y_scale)
+
+
+    ax.set_xlabel(auto_make_labels(self._units.domain, self._labels.domain), fontsize=self.plottingOptions.font_size)
+    ax.set_ylabel(auto_make_labels(self._units.response, self._labels.response), fontsize=self.plottingOptions.font_size)
+
+    ax.tick_params(labelsize=self.plottingOptions.font_size)
+
+    if self.plottingOptions.save_path:
+
+        save_filename = f"GroupMeans_{self.plottingOptions.save_labels}.png"
+
+        fig.savefig(os.path.join(self.plottingOptions.save_path, save_filename))
         plt.close(fig)
     else:
         plt.show(block=False)
 
     return fig, ax
+
+
+def auto_make_labels(units, quanity_label):
+    if quanity_label is not None:
+        axis_label = f'{quanity_label}'
+    else:
+        axis_label = ''
+        
+    if units is not None:
+        if axis_label == '':
+            axis_label = f'({units})'
+        else:
+            axis_label += ' ' + f'({units})'
+
+    return axis_label
+       
 
 
 # TODO: Needs work

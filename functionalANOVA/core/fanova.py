@@ -13,9 +13,9 @@ class ANOVALabels:
     secondary: Optional[List[str]] = None
     generic_group: Optional[bool] = True
 
-    # unit Labels
-    domain:Optional[str] = None  # such as Time
-    response:Optional[str] = None
+    # Quantity Labels
+    domain:Optional[str] = None     # such as Time
+    response:Optional[str] = None   # Such as Temperature
 
     # Hypothesis Labels
     hypothesis: Optional[List[str]] = None
@@ -24,8 +24,8 @@ class ANOVALabels:
 
 @dataclass  # class to store units
 class ANOVAUnits:
-    domain: Optional[str] = None  # Such as seconds
-    response: Optional[str] = None
+    domain: Optional[str] = None    # Such as seconds
+    response: Optional[str] = None  # Such as Celcius
 
 @dataclass
 class ANOVATables:
@@ -83,6 +83,8 @@ class AnovaStatistics:  # Used just for vanilla Oneway
     beta_hat_unbias: Optional[float] = None
     kappa_hat_unbias: Optional[float] = None
 
+
+
 class functionalANOVA():
 
     @property
@@ -117,8 +119,10 @@ class functionalANOVA():
         group_labels: Optional[List[str]] = None,
         primary_labels: Optional[List[str]] = None,
         secondary_labels: Optional[List[str]] = None,
-        domain_units_label: Optional[str] = None,
-        response_units_label: Optional[str] = None
+        domain_units: Optional[str] = None,
+        domain_label: Optional[str] = None,
+        response_units: Optional[str] = None,
+        response_label: Optional[str] = None,
     ):
 
 
@@ -129,10 +133,11 @@ class functionalANOVA():
         self.n_simul = int(n_simul)
         self.alpha = alpha
         self._labels = ANOVALabels(group_labels, primary_labels, secondary_labels)
-        self._units = ANOVAUnits(domain_units_label, response_units_label)
+        self._units = ANOVAUnits(domain_units, response_units)
         self._tables = ANOVATables()
         self._methods = ANOVAMethods()
         self._groups = ANOVAGroups(subgroup_indicator=subgroup_indicator)
+        self.plottingOptions = plotting.PlotOptions()
 
 
         # Public and writable fields
@@ -142,6 +147,7 @@ class functionalANOVA():
         self.show_simul_plots = False # Shows Null distribution plots for "Simul" Methods
 
         # Validate All Inputs
+        self._validate_domain_response_labels(domain_units, domain_label,  response_units, response_label)
         self._validate_instantiation_inputs()
 
         self._groups.k = len(data_list)
@@ -177,17 +183,20 @@ class functionalANOVA():
             self._setup_twoway()  # Creates Indicator Matrices and default Labels
             self._n_ii_generator()  # Creates Secondary Size Array
 
+  
     def plot_means(self,
-                   plot_type: str,
+                   plot_type: str = 'default',
                    subgroup_indicator: Optional[Union[np.ndarray, List[np.ndarray]]] = None,
-                   observation_size_label: bool = True,
                    group_labels: Optional[List[str]] = None,
                    primary_labels: Optional[List[str]] = None,
                    secondary_labels: Optional[List[str]] = None,
-                   x_scale: str = '',
-                   y_scale: str = '',
-                   domain_units_label: str = '',
-                   response_units_label: str = '',
+                   domain_units: None|str = None,
+                   domain_label: None|str = None,
+                   response_units: None|str = None,
+                   response_label: None|str = None,
+                   observation_size_label: bool = True,
+                   x_scale: str = 'linear',
+                   y_scale: str = 'linear',
                    data_transparency: float = 0.1,
                    legend_transparency: float = 0.3333,
                    data_line_width: float = 1.75,
@@ -199,9 +208,40 @@ class functionalANOVA():
                    num_columns: int = 1,
                    legend_title: str = '',
                    new_colors: Optional[np.ndarray] = None,
-                   position: Tuple[int, int, int, int] = (90, 90, 1400, 800)) -> Tuple[Any, Any]:
+                   position: Tuple[int, int, int, int] = (90, 90, 1400, 800)) -> Tuple[Any, Any]: 
+        
+        self._validate_domain_response_labels(domain_units, domain_label,  response_units, response_label)
+        
+        
+        # Build updates dictionary from user args
+        updates = dict(
+            x_scale=x_scale,
+            y_scale=y_scale,
+            data_transparency=data_transparency,
+            legend_transparency=legend_transparency,
+            data_line_width=data_line_width,
+            mean_line_width=mean_line_width,
+            font_size=font_size,
+            title_labels=title_labels,
+            save_path=save_path,
+            legend_location=legend_location,
+            num_columns=num_columns,
+            legend_title=legend_title,
+            new_colors=new_colors,
+            position=position,
+        )
 
-        return plotting.plot_means(self, plot_type, subgroup_indicator, observation_size_label, group_labels, primary_labels, secondary_labels, x_scale, y_scale, domain_units_label, response_units_label, data_transparency, legend_transparency, data_line_width, mean_line_width, font_size, title_labels, save_path, legend_location, num_columns, legend_title, new_colors, position)
+        # Update only changed values
+        self.plottingOptions.update_from_dict(updates)
+
+        if self._groups.subgroup_indicator is None:
+            assert plot_type.upper() == 'DEFAULT', (
+                f"Invalid plot_type '{plot_type}'. "
+                "The plot types ['PRIMARY', 'SECONDARY', 'INTERACTION'] are only valid for two-way analyses, "
+                "which require providing a subgroup_indicator. "
+                "Use plot_type='DEFAULT' for one-way analyses.")
+
+        return plotting.plot_means(self, plot_type)
 
     def plot_covariances(self,
                         plot_type: str,
@@ -694,6 +734,26 @@ class functionalANOVA():
 
             self.hypothesis = hypothesis.upper()
 
+    def _validate_domain_response_labels(self, domain_units: None|str, domain_label: None|str , response_units: None|str , response_label: None|str ):
+        for name, value in [
+        ("domain_units", domain_units),
+        ("domain_label", domain_label),
+        ("response_units", response_units),
+        ("response_label", response_label),]:
+            
+            if value is not None and not isinstance(value, str):
+                raise TypeError(f"{name} must be a string or None, got {type(value).__name__}.")
+            if  isinstance(value, str):
+                match name:
+                    case 'domain_units':
+                        self._units.domain = value
+                    case 'domain_label':
+                        self._labels.domain = value
+                    case 'response_units':
+                        self._units.response = value
+                    case 'response_label':
+                        self._labels.response = value
+                
     def _function_subsetter(self):
 
         lb = np.min(self.grid_bounds)
